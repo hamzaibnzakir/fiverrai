@@ -1,0 +1,99 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Brainbox Gig AI — injected UI (niche bar + inline field buttons)
+   Violet/indigo theme, matched to the popup. These render on Fiverr's own
+   (light) editor pages, so the dark bar deliberately stands out as "ours".
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Gig niche bar (injected above gig editor) ── */
+.fai-niche-bar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 16px;
+  padding: 10px 13px 10px 15px;
+  background: #14141F;
+  background-image:
+    radial-gradient(340px 120px at 100% -20%, rgba(124,92,252,0.30), transparent 70%),
+    radial-gradient(260px 100px at -6% 0%, rgba(34,211,238,0.18), transparent 70%);
+  border: 1px solid #2E2A4A;
+  border-radius: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  box-shadow: 0 8px 26px rgba(124,92,252,0.22);
+}
+.fai-niche-bar label {
+  font-size: 10px;
+  font-weight: 800;
+  color: #8F73FF;
+  white-space: nowrap;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.fai-niche-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #EDEDF5;
+  font-size: 13px;
+  padding: 4px 2px;
+  outline: none;
+  font-family: inherit;
+}
+.fai-niche-bar input::placeholder { color: #6C6C86; font-style: italic; }
+.fai-niche-bar span {
+  font-size: 10px;
+  color: #8F73FF;
+  white-space: nowrap;
+  background: rgba(124,92,252,0.14);
+  border: 1px solid rgba(124,92,252,0.30);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+/* ── Inline field buttons ── */
+.fai-field-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0 6px;
+  background: #fff;
+  border: 1.5px solid transparent;
+  background-image:
+    linear-gradient(#fff, #fff),
+    linear-gradient(135deg, #7C5CFC 0%, #22D3EE 100%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  border-radius: 20px;
+  color: #6B4BE8;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 15px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: color 0.15s, box-shadow 0.15s, transform 0.1s, background-image 0.15s;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(124,92,252,0.18);
+}
+
+.fai-field-btn:hover:not(:disabled) {
+  background-image:
+    linear-gradient(135deg, #7C5CFC 0%, #22D3EE 100%),
+    linear-gradient(135deg, #7C5CFC 0%, #22D3EE 100%);
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(124,92,252,0.42);
+  transform: translateY(-1px);
+}
+
+.fai-field-btn:active:not(:disabled) {
+  transform: scale(0.97) translateY(0);
+  box-shadow: 0 2px 8px rgba(124,92,252,0.22);
+}
+
+.fai-field-btn:disabled {
+  background-image: linear-gradient(#f3f0ff, #f3f0ff), linear-gradient(135deg, #c9bcff, #a9e9f5);
+  color: #7C5CFC;
+  opacity: 0.85;
+  cursor: not-allowed;
+  transform: none;
+}
