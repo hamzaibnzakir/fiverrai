@@ -3,6 +3,7 @@ const PROFILE_PATTERN = /fiverr\.com\/sellers\/[^/]+\/edit/;
 
 let faiKeywords = '';
 let faiEnabled = true;
+let faiResearchEnabled = true;
 let _faiStop = false;
 
 // Appended to the prose-writing prompts so output reads like a real seller
@@ -17,9 +18,10 @@ WRITE LIKE A REAL PERSON, NOT AN AI:
 - Be concrete and specific over vague and impressive — real tool names, real numbers, real outcomes beat adjectives.
 - A little natural imperfection (a casual aside, a direct "here's the deal") reads more human than flawless corporate polish.`;
 
-chrome.storage.local.get(['faiKeywords', 'faiEnabled'], (data) => {
+chrome.storage.local.get(['faiKeywords', 'faiEnabled', 'faiResearch'], (data) => {
   faiKeywords = data.faiKeywords || '';
   faiEnabled = data.faiEnabled !== false;
+  faiResearchEnabled = data.faiResearch !== false;
 });
 
 function getProfile() {
@@ -70,6 +72,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (changes.faiEnabled !== undefined) {
       faiEnabled = changes.faiEnabled.newValue !== false;
       applyEnabledState();
+    }
+    if (changes.faiResearch !== undefined) {
+      faiResearchEnabled = changes.faiResearch.newValue !== false;
     }
   }
 });
@@ -211,6 +216,188 @@ async function ask(prompt, system, temperature) {
   return res.result;
 }
 
+// ── Live market research ────────────────────────────────────────────────
+// Pulls what's actually ranking on Fiverr for the current niche RIGHT NOW —
+// real gig titles, tags, and package prices — straight from Fiverr's own
+// search-results page, same-origin, under the seller's normal logged-in
+// session. One request per research call (not a crawl), cached per-niche
+// for 30 minutes, so behaviorally this looks exactly like the seller
+// running one manual search — nothing that reads as scraping abuse.
+//
+// IMPORTANT CAVEAT: Fiverr's page markup isn't something we can inspect
+// from outside a live session, so the parsing below is deliberately
+// defensive — it tries a JSON-hydration strategy first, then a DOM-pattern
+// fallback, and if BOTH come back empty it just returns null. Every caller
+// treats null as "no live data available" and falls back to the exact
+// generation behavior this extension had before this feature existed.
+// This needs one real test pass on fiverr.com to confirm which strategy
+// actually fires — see console.debug('[fai-research]', ...) breadcrumbs
+// below if you need to debug which path matched.
+
+const RESEARCH_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function researchCacheKey(kw) { return `faiResearch:${kw.toLowerCase().trim()}`; }
+
+function getCachedResearch(kw) {
+  try {
+    const raw = sessionStorage.getItem(researchCacheKey(kw));
+    if (!raw) return undefined;
+    const cached = JSON.parse(raw);
+    if (Date.now() - cached.ts > RESEARCH_TTL_MS) return undefined;
+    return cached.data; // may be null (a previous attempt found nothing) or a brief object
+  } catch { return undefined; }
+}
+
+function setCachedResearch(kw, data) {
+  try { sessionStorage.setItem(researchCacheKey(kw), JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
+// Heuristically walks an arbitrary JSON tree looking for gig-shaped objects
+// (a title-like string field + a price-like numeric field) without needing
+// to know Fiverr's exact schema in advance — same philosophy as this file's
+// existing extractStringArrays() used for the skills/companies lists.
+function mineJsonForGigs(node, out = [], depth = 0) {
+  if (depth > 8 || out.length >= 60 || !node || typeof node !== 'object') return out;
+  if (Array.isArray(node)) {
+    for (const item of node) mineJsonForGigs(item, out, depth + 1);
+    return out;
+  }
+  const keys = Object.keys(node);
+  const titleKey = keys.find(k => /title|gigTitle|name/i.test(k) && typeof node[k] === 'string' && node[k].length > 8 && node[k].length < 150);
+  const priceKey = keys.find(k => /price|cost|startingPrice|packagePrice/i.test(k) &&
+    (typeof node[k] === 'number' || (typeof node[k] === 'string' && /^\$?\d/.test(node[k]))));
+  if (titleKey && priceKey) {
+    const rawPrice = node[priceKey];
+    const price = typeof rawPrice === 'number' ? rawPrice : parseFloat(String(rawPrice).replace(/[^0-9.]/g, ''));
+    if (price && price > 0 && price < 100000) out.push({ title: node[titleKey], price });
+  }
+  for (const k of keys) mineJsonForGigs(node[k], out, depth + 1);
+  return out;
+}
+
+// DOM fallback: look for "$NN"-shaped price text near a link/heading inside
+// a gig-card-ish element. Resilient to class-name changes since it doesn't
+// depend on any specific selector, only on the visible price/title pattern.
+function mineDomForGigs(doc) {
+  const results = [];
+  const priceRe = /\$\s?\d{1,4}/;
+  const candidates = [...doc.querySelectorAll('a[href*="/gigs/"], a[href*="gig_id"], article, li')];
+  for (const el of candidates) {
+    const text = (el.textContent || '').trim();
+    const priceMatch = text.match(priceRe);
+    if (!priceMatch) continue;
+    const titleEl = el.querySelector('h1,h2,h3,h4,p,span');
+    const title = (titleEl?.textContent || '').trim().slice(0, 140);
+    if (!title || title.length < 8) continue;
+    const price = parseInt(priceMatch[0].replace(/[^\d]/g, ''), 10);
+    if (!price || price < 3 || price > 100000) continue;
+    results.push({ title, price });
+    if (results.length >= 40) break;
+  }
+  return results;
+}
+
+function median(nums) {
+  if (!nums.length) return null;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
+
+const RESEARCH_STOPWORDS = new Set(['the','a','an','and','or','for','with','to','of','in','on','i','will','your','you','my','is','are','from','by']);
+function topTerms(titles, n = 8) {
+  const freq = {};
+  for (const t of titles) {
+    for (const w of t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)) {
+      if (w.length < 3 || RESEARCH_STOPWORDS.has(w)) continue;
+      freq[w] = (freq[w] || 0) + 1;
+    }
+  }
+  return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, n).map(([w]) => w);
+}
+
+// Single same-origin fetch of Fiverr's own search results for the niche —
+// functionally identical to the seller typing a search and hitting enter.
+async function fetchFiverrGigs(kw) {
+  const url = `https://www.fiverr.com/search/gigs?query=${encodeURIComponent(kw)}`;
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) return [];
+  const html = await res.text();
+
+  // Strategy 1: embedded hydration JSON (try the common variable names).
+  for (const re of [
+    /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/,
+    /window\.__NUXT__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/,
+    /<script[^>]*id=["']perseus-initial-props["'][^>]*>([\s\S]*?)<\/script>/,
+  ]) {
+    const m = html.match(re);
+    if (!m) continue;
+    try {
+      const data = JSON.parse(m[1]);
+      const mined = mineJsonForGigs(data);
+      if (mined.length) { console.debug('[fai-research] matched via JSON hydration', mined.length); return mined; }
+    } catch { /* try next strategy */ }
+  }
+
+  // Strategy 2: parse the returned HTML as a DOM and pattern-match visible cards.
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const mined = mineDomForGigs(doc);
+    if (mined.length) console.debug('[fai-research] matched via DOM fallback', mined.length);
+    return mined;
+  } catch {
+    return [];
+  }
+}
+
+// Main entry point. Returns a market brief, or null if research is off,
+// nothing was found, or the fetch/parse failed for any reason — callers
+// must treat null as "proceed exactly like this feature doesn't exist."
+async function researchMarket(kw, setStatus) {
+  if (!faiResearchEnabled || !kw) return null;
+
+  const cached = getCachedResearch(kw);
+  if (cached !== undefined) return cached;
+
+  try {
+    setStatus?.('⟳ Researching market…');
+    const gigs = await fetchFiverrGigs(kw);
+    if (!gigs.length) { setCachedResearch(kw, null); return null; }
+
+    setStatus?.(`⟳ Found ${gigs.length} ranking gigs, analyzing…`);
+    const prices = gigs.map(g => g.price).filter(Boolean);
+    const brief = {
+      count: gigs.length,
+      medianPrice: median(prices),
+      minPrice: prices.length ? Math.min(...prices) : null,
+      maxPrice: prices.length ? Math.max(...prices) : null,
+      commonTerms: topTerms(gigs.map(g => g.title)),
+      sampleTitles: gigs.slice(0, 8).map(g => g.title),
+    };
+    setCachedResearch(kw, brief);
+    return brief;
+  } catch (e) {
+    console.debug('[fai-research] failed, degrading gracefully:', e.message);
+    return null; // never block generation over this
+  }
+}
+
+function forceRefreshResearch(kw) {
+  try { sessionStorage.removeItem(researchCacheKey(kw)); } catch {}
+}
+
+// Turns a market brief into extra prompt context. Empty string if no brief
+// — so every ${marketContext(...)} call site is safe to use unconditionally.
+function marketContext(brief) {
+  if (!brief) return '';
+  const lines = [];
+  if (brief.medianPrice) lines.push(`- Live median price among top-ranking gigs right now: ~$${brief.medianPrice} (range $${brief.minPrice}-$${brief.maxPrice}, sampled from ${brief.count} current results)`);
+  if (brief.commonTerms?.length) lines.push(`- Terms that repeat across top-ranking titles right now: ${brief.commonTerms.join(', ')}`);
+  if (brief.sampleTitles?.length) lines.push(`- A few real titles ranking right now (pattern reference only — never copy or closely mirror these): ${brief.sampleTitles.slice(0, 5).join(' | ')}`);
+  if (!lines.length) return '';
+  return `\n\nLIVE MARKET RESEARCH (real data just pulled from Fiverr's own search results for this niche):\n${lines.join('\n')}\nGround pricing in the real median above rather than guessing. Use the repeated terms/titles only to see what's saturated so you can differentiate — never copy them.`;
+}
+
 // Pick a random item so repeated generations for the same keyword take a different creative angle
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
@@ -298,12 +485,29 @@ function injectNicheBar() {
   bar.innerHTML = `
     <label>◆ Niche</label>
     <input id="fai-gig-niche" type="text" autocomplete="off">
-    <span>powers all AI buttons</span>
+    <button id="fai-refresh-research" type="button" title="Refresh live market data for this niche">🔄</button>
+    <span id="fai-research-status">powers all AI buttons</span>
   `;
   container.before(bar);
 
   // Rotate placeholder examples
   const nicheInput = bar.querySelector('#fai-gig-niche');
+  const statusEl = bar.querySelector('#fai-research-status');
+  const refreshBtn = bar.querySelector('#fai-refresh-research');
+
+  refreshBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const kw = getKeywords();
+    if (!kw) { statusEl.textContent = '⚠ set a niche first'; setTimeout(() => { statusEl.textContent = 'powers all AI buttons'; }, 2000); return; }
+    forceRefreshResearch(kw);
+    refreshBtn.disabled = true;
+    const brief = await researchMarket(kw, (t) => { statusEl.textContent = t; });
+    refreshBtn.disabled = false;
+    statusEl.textContent = brief
+      ? `✓ market data refreshed — ${brief.count} live gigs, ~$${brief.medianPrice} median`
+      : '— no live market data found for this niche';
+    setTimeout(() => { statusEl.textContent = 'powers all AI buttons'; }, 4000);
+  });
 
   // Restore saved niche for this gig session
   const saved = sessionStorage.getItem('faiGigNiche');
@@ -348,8 +552,10 @@ function injectPage1() {
   );
   if (titleEl && !titleEl.dataset.faiDone) {
     titleEl.dataset.faiDone = '1';
-    const btn = makeBtn('◆ Generate Title', async (kw) => {
+    const btn = makeBtn('◆ Generate Title', async (kw, setStatus) => {
       setMsg('Generating title…', 'info');
+      const brief = await researchMarket(kw, setStatus);
+      setStatus?.('⟳ Writing title…');
       const angle = pick([
         'Start with a strong action verb (build, develop, automate, create, design) followed by the tool/platform, then the outcome.',
         'Lead with the specific tool or platform name first, then say what you do with it.',
@@ -363,7 +569,7 @@ Max 60 chars. Naturally include 1-2 of these keywords: ${kw}.
 ${angle}
 Be specific and punchy: service + tool/platform + outcome. No filler words.
 Avoid defaulting to the most generic, expected phrasing — this must read differently from a typical templated gig title.
-Reply with ONLY the text, no quotes.${HUMAN_VOICE}`,
+Reply with ONLY the text, no quotes.${marketContext(brief)}${HUMAN_VOICE}`,
         1.0
       );
       const clean = text.replace(/^["']|["']$/g, '').trim().replace(/^i will\s+/i, '').trim();
@@ -381,11 +587,13 @@ Reply with ONLY the text, no quotes.${HUMAN_VOICE}`,
   );
   if (tagEl && !tagEl.dataset.faiDone) {
     tagEl.dataset.faiDone = '1';
-    const btn = makeBtn('◆ Generate Tags', async (kw) => {
+    const btn = makeBtn('◆ Generate Tags', async (kw, setStatus) => {
       setMsg('Adding tags…', 'info');
+      const brief = await researchMarket(kw, setStatus);
+      setStatus?.('⟳ Writing tags…');
       const raw = await ask(`Keywords: ${kw}`,
         `Generate exactly 5 Fiverr search tags. lowercase, 1-3 words each, letters and numbers only, no special chars.
-Return ONLY a comma-separated list. Example: algo trading, mt5 bot, python trading, expert advisor, automated trading`
+Return ONLY a comma-separated list. Example: algo trading, mt5 bot, python trading, expert advisor, automated trading${marketContext(brief)}`
       );
       const tags = raw.split(',').map(t => t.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '')).filter(Boolean).slice(0, 5);
       for (const tag of tags) { await typeTag(tagEl, tag); await humanDelay(); }
@@ -405,8 +613,15 @@ function injectPage2() {
   const anchor = nameFields[0].closest('table, div[class*="package"], section') || nameFields[0].closest('div');
   if (anchor && !anchor.dataset.faiDone) {
     anchor.dataset.faiDone = '1';
-    const btn = makeBtn('◆ Generate Packages', async (kw) => {
+    const btn = makeBtn('◆ Generate Packages', async (kw, setStatus) => {
       setMsg('Generating packages…', 'info');
+      const brief = await researchMarket(kw, setStatus);
+      setStatus?.('⟳ Writing packages…');
+
+      const pricingRule = brief?.medianPrice
+        ? `- Prices: grounded in the live market data below — position Standard near the real median price for this niche, Basic meaningfully below it, Premium meaningfully above it. Don't undercut to rock-bottom and don't be the most expensive outlier either, unless the scope genuinely justifies it.`
+        : `- Prices: realistic for the gig type and tier (basic cheapest, premium highest). No live market data was available for this niche, so use your best judgment for the category.`;
+
       const packagesPrompt = `Create 3 Fiverr packages for a gig about: ${kw}. Return ONLY valid JSON, no markdown code fences, no extra text:
 {
   "basic":    { "name": "UNIQUE_NAME_1", "description": "...", "price": 30  },
@@ -417,8 +632,8 @@ Rules:
 - Top-level keys must be exactly "basic", "standard", "premium" (lowercase) — nothing else.
 - Names: creative tier-appropriate names (NOT Basic/Standard/Premium). E.g. Starter, Growth, Pro, Elite, Essential, Advanced, Ultimate. Each must be DIFFERENT.
 - Description: use the format 'This [Name] package includes [what's in it].' — 75-90 characters. Example: 'This Starter package includes a logo design with 2 revisions and the source file.' Adapt to the gig niche and tier scope.
-- Prices: realistic for the gig type and tier (basic cheapest, premium highest).
-- Escalate scope between tiers: basic = minimal, standard = full, premium = everything + extras.${HUMAN_VOICE}
+${pricingRule}
+- Escalate scope between tiers: basic = minimal, standard = full, premium = everything + extras.${marketContext(brief)}${HUMAN_VOICE}
 JSON only.`;
 
       // Normalise whatever shape the model returns into {basic, standard, premium}
@@ -502,8 +717,10 @@ function injectPage3() {
 
   if (editor && toolbar && !toolbar.dataset.faiDone) {
     toolbar.dataset.faiDone = '1';
-    const btn = makeBtn('◆ Generate Description', async (kw) => {
+    const btn = makeBtn('◆ Generate Description', async (kw, setStatus) => {
       setMsg('Generating description…', 'info');
+      const brief = await researchMarket(kw, setStatus);
+      setStatus?.('⟳ Writing description…');
       const hookStyle = pick([
         'Question the buyer is likely asking themselves, followed by a short confident reassurance. E.g. "Looking for a custom Chrome extension to automate tasks? You\'re in the right place!"',
         'A bold direct claim about the outcome you deliver, no question mark. E.g. "Your workflow shouldn\'t need 10 manual steps when one Chrome extension can do it."',
@@ -521,21 +738,30 @@ function injectPage3() {
 {
   "hook": "...",
   "intro": "...",
-  "develop": ["...", "...", "...", "...", "...", "...", "...", "..."],
-  "why": ["...", "...", "...", "...", "...", "..."],
+  "develop": ["...", "...", "...", "...", "...", "..."],
+  "why": ["...", "...", "...", "..."],
   "closing": "...",
   "cta": "..."
 }
-Rules:
-- hook: ${hookStyle} 1 sentence, max 110 chars.
-- intro: 1-2 sentences about your experience and who you build for. Mention years and client types.
-- develop: exactly 8 specific things you can build/deliver for this niche. Short phrases, 4-8 words each. Diverse and specific to ${kw}.
-- why: exactly 6 short selling points. 4-7 words each. ${whyStyle}
-- closing: 1-2 sentences wrapping up the offer. Invite them to order.
-- cta: one direct action sentence, 60-80 chars.
-- Weave keywords from: ${kw}
+
+FIVERR PLATFORM RULES (this field has a hard 1,200-character cap and gets flagged/truncated past it — the whole description across every field below must total roughly 900-1050 visible characters, comfortably under the cap, not up against it):
+- hook: ${hookStyle} 1 sentence, max 110 chars. Never start with "I" — open on the buyer's problem or the outcome, not on yourself.
+- intro: 1 sentence framed around the BUYER's situation and what they get — who this is for and what problem it solves. Do not lead with your own bio; if experience is mentioned at all, it's a trailing trust cue, not the subject of the sentence. Max 140 chars.
+- develop: exactly 6 specific things you can build/deliver for this niche (not 8 — keep the section scannable and inside the char budget). Short phrases, 4-8 words each. Diverse and specific to ${kw}.
+- why: exactly 4 short selling points (not 6). 4-7 words each. ${whyStyle}
+- closing: 1 sentence wrapping up the offer, inviting them to order. Max 120 chars.
+- cta: one direct action sentence, 50-70 chars.
+- The primary keyword/service from "${kw}" must appear naturally within the hook or intro (Fiverr indexes description keywords, and early placement carries more weight) — but never stuff or repeat keywords artificially; write for the buyer first.
 - Avoid the most predictable, template-sounding phrasing — this should read differently each time it's generated, not like the same gig with nouns swapped.
-- Output JSON only, no markdown, no char counts.${HUMAN_VOICE}`,
+
+FIVERR COMPLIANCE — never include any of the following anywhere in the output, no exceptions:
+- Any contact info or off-platform payment method: email addresses, phone numbers, WhatsApp, Telegram, Skype, Discord, PayPal, or any invitation to communicate/pay outside Fiverr.
+- Unverifiable guarantees or absolute claims: "100% guaranteed," "#1," "best in the world," fake certifications, or promises you can't back up. Confidence is fine; false certainty is not.
+- Emojis, excessive punctuation ("!!!" "???"), ALL-CAPS shouting, or non-standard special characters.
+- Claims of official partnership/certification with a named brand or platform unless it's simply naming a tool you use (e.g. "I build with Shopify" is fine; "official Shopify partner" is not, unless literally true and stated as such elsewhere).
+- Anything that could read as copied from another seller's listing — this must be original phrasing every time.
+
+Output JSON only, no markdown, no char counts.${marketContext(brief)}${HUMAN_VOICE}`,
         0.95
       );
 
@@ -546,8 +772,8 @@ Rules:
       const clean = s => String(s).replace(/\s*\(\d+.*?\)\s*/g, '').trim();
       desc.hook    = clean(desc.hook);
       desc.intro   = clean(desc.intro || '');
-      desc.develop = (desc.develop || []).map(b => clean(b)).filter(Boolean).slice(0, 10);
-      desc.why     = (desc.why || []).map(b => clean(b)).filter(Boolean).slice(0, 6);
+      desc.develop = (desc.develop || []).map(b => clean(b)).filter(Boolean).slice(0, 6);
+      desc.why     = (desc.why || []).map(b => clean(b)).filter(Boolean).slice(0, 4);
       desc.closing = clean(desc.closing || '');
       desc.cta     = clean(desc.cta || '');
 
@@ -624,9 +850,10 @@ Return ONLY valid JSON array:
   { "question": "...", "answer": "..." }
 ]
 RULES:
-- NEVER mention email, phone, WhatsApp, Telegram, Skype — Fiverr TOS violation.
+- NEVER mention email, phone, WhatsApp, Telegram, Skype, Discord, or PayPal, or invite communication/payment off-platform — Fiverr TOS violation.
+- No unverifiable guarantees ("100% guaranteed," "#1," fake certifications) and no emojis or ALL-CAPS.
 - Questions: written as the buyer asking, casual and direct (e.g. "How long does it take?", "What do I get?").
-- Answers: confident, personal, first-person. 2 sentences max. 180-240 chars. Use real specifics — tool names, day counts, file types, numbers. Sound like a real seller, not a template.
+- Answers: confident, personal, first-person. 2 sentences max. 180-260 chars. Use real specifics — tool names, day counts, file types, numbers. Sound like a real seller, not a template.
 - BAD answer: "I will deliver high-quality results in a timely manner." GOOD answer: "Most projects take 3-5 days. I'll send you the full source code, manifest, and a setup guide."
 - ${voiceStyle}
 - Avoid reusing the most predictable phrasing — vary sentence structure and word choice so this doesn't read like a template filled in with different nouns.${HUMAN_VOICE}
@@ -772,21 +999,31 @@ function injectPage5() {
   if (!anchor || anchor.dataset.faiGalleryDone) return;
   anchor.dataset.faiGalleryDone = '1';
 
-  // Color palettes — [background hex, name, accent hex, accent name]
+  // Color palettes — [background hex, name, accent hex, accent name, tone]
+  // "tone" groups palettes so a niche's mood (playful vs corporate vs elegant)
+  // picks a palette that actually fits it, instead of pure random.
   const PALETTES = [
-    ['#05080F', 'pure deep black', '#FFB800', 'gold'],
-    ['#0A0F1E', 'deep navy', '#00D9FF', 'electric cyan'],
-    ['#12080A', 'near-black charcoal red', '#FF3B30', 'crimson red'],
-    ['#0B0F0C', 'deep forest black', '#39FF88', 'neon green'],
-    ['#0D0A14', 'deep violet-black', '#C77DFF', 'vivid purple'],
-    ['#FFFFFF', 'pure white', '#0057FF', 'royal blue'],
-    ['#0F0B08', 'deep espresso black', '#FF8A00', 'burnt orange'],
+    ['#05080F', 'pure deep black', '#FFB800', 'gold', 'bold'],
+    ['#0A0F1E', 'deep navy', '#00D9FF', 'electric cyan', 'corporate'],
+    ['#12080A', 'near-black charcoal red', '#FF3B30', 'crimson red', 'bold'],
+    ['#0B0F0C', 'deep forest black', '#39FF88', 'neon green', 'playful'],
+    ['#0D0A14', 'deep violet-black', '#C77DFF', 'vivid purple', 'playful'],
+    ['#FFFFFF', 'pure white', '#0057FF', 'royal blue', 'corporate'],
+    ['#0F0B08', 'deep espresso black', '#FF8A00', 'burnt orange', 'bold'],
+    ['#FAF7F2', 'warm off-white', '#2B2118', 'deep espresso', 'elegant'],
+    ['#F5F1EA', 'soft cream', '#B08D57', 'muted gold', 'elegant'],
+    ['#0C1210', 'deep pine black', '#7FFFD4', 'aquamarine', 'minimal'],
+    ['#111111', 'matte black', '#FFFFFF', 'pure white', 'minimal'],
+    ['#1A0F1F', 'deep plum', '#FF6EC7', 'hot pink', 'playful'],
   ];
 
-  // Layout skeletons — each returns the full prompt given the content fields
-  const LAYOUTS = [
-    // A: stacked two-line massive title, centered, icons scattered corners/mid-sides
-    (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels.
+  // Layout skeletons, grouped by tone. Each returns the full prompt given
+  // the content fields. Tone families let the model's chosen mood pick a
+  // matching composition instead of every gig getting a random layout.
+  const LAYOUTS = {
+    bold: [
+      // stacked two-line massive title, centered, icons scattered corners/mid-sides
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels.
 One unified full image. NO split panels. NO divider lines. NO cards. NO feature lists.
 Bold typography center. Relevant tool/platform icons surrounding it.
 
@@ -805,8 +1042,8 @@ ${logoLines}
 STYLE: minimal dark tech poster, extreme negative space, clean and premium.
 DO NOT include: split lines, divider panels, feature cards, stat badges, bottom logo rows, particle effects, human figures, charts, money imagery, website URL, hexagon badges, clutter of any kind.`,
 
-    // B: single dominant word large, second word smaller below it, icons in a loose bottom arc
-    (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, no panels, no borders, no grid lines.
+      // single dominant word large, second word smaller below it, icons in a loose bottom arc
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, no panels, no borders, no grid lines.
 
 BACKGROUND: solid ${bg[1]} (${bg[0]}), completely flat and clean.
 
@@ -820,8 +1057,25 @@ ${logoLines}
 STYLE: bold poster energy, like a movie title card. Premium, confident, minimal.
 DO NOT include: borders, panels, grids, human figures, charts, money imagery, screenshots, watermarks, extra text beyond what is specified.`,
 
-    // C: title in a rounded badge/pill, slightly tilted, icons only in the four corners
-    (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, no split panels, no dividers, no feature cards.
+      // diagonal split — two color bands cutting across, title straddling the seam
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, bold diagonal composition.
+
+BACKGROUND: split diagonally (roughly 40/60) from top-left to bottom-right into two bands — one ${bg[1]} (${bg[0]}), the other a slightly darker variant of the same color. The diagonal seam is a clean hard edge, no gradient blur.
+
+STRADDLING THE SEAM, large and centered: the two-line bold title:
+Line 1: "${d.line1}" in white
+Line 2: "${d.line2}" in ${accent[1]} (${accent[0]}), larger, with a subtle drop shadow so it pops off both bands
+Beneath it: one small light gray line: "${d.subtitle}"
+
+ICONS: scattered loosely in the emptier corners away from the title, each clear and recognizable:
+${logoLines}
+
+STYLE: dynamic, energetic, confident — like a sports/tech launch poster.
+DO NOT include: more than one diagonal seam, gradients, human figures, charts, money imagery, clutter of any kind.`,
+    ],
+    corporate: [
+      // title in a rounded badge/pill, slightly tilted, icons only in the four corners
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, no split panels, no dividers, no feature cards.
 
 BACKGROUND: ${bg[1]} (${bg[0]}) with an extremely subtle diagonal gradient toward a slightly darker shade of the same color — barely visible, still reads as a flat unified background.
 
@@ -836,8 +1090,8 @@ ${logoLines}
 STYLE: confident, modern, slightly dynamic due to the tilt. Premium poster energy, extreme cleanliness elsewhere.
 DO NOT include: extra badges, stat lines, charts, human figures, money imagery, screenshots, clutter of any kind.`,
 
-    // D: left-aligned asymmetric title, icons in a vertical column on the right
-    (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, editorial poster layout, asymmetric composition — NOT centered.
+      // left-aligned asymmetric title, icons in a vertical column on the right
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, editorial poster layout, asymmetric composition — NOT centered.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean, no textures or gradients.
 
@@ -851,10 +1105,78 @@ ${logoLines}
 
 STYLE: modern editorial tech poster, strong asymmetry, lots of negative space around the icon column.
 DO NOT include: dividing lines between the two sections, borders, panels, human figures, charts, money imagery, clutter of any kind.`,
-  ];
 
-  // Shared step 1: have the LLM design the poster's text/icon content, then
-  // render it into a full image-generation prompt using a random layout.
+      // honeycomb/grid of icons framing a small centered title
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, structured grid composition.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), clean, no textures.
+
+CENTER: a modestly sized two-line title inside a thin ${accent[1]} rounded-rectangle outline (not filled):
+Line 1: "${d.line1}" in white
+Line 2: "${d.line2}" in ${accent[1]} (${accent[0]})
+Beneath it, outside the outline: one small light gray line: "${d.subtitle}"
+
+SURROUNDING THE CENTER: the following icons arranged in a loose, evenly-spaced ring/grid around the outlined title, each in its own generous negative-space cell, none touching each other or the center box:
+${logoLines}
+
+STYLE: structured, precise, enterprise-grade — like a technology stack diagram turned into a poster.
+DO NOT include: connecting lines between icons, charts, human figures, money imagery, clutter of any kind.`,
+    ],
+    playful: [
+      // bouncy scattered title with tilted word chunks, icons as playful accents
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, energetic and fun composition.
+
+BACKGROUND: solid ${bg[1]} (${bg[0]}), flat and clean, with a few small soft-glow accent dots in ${accent[1]} scattered subtly in the negative space (never near the text).
+
+CENTER: the two-line title with each line at a slightly different playful tilt (a few degrees, opposite directions):
+Line 1: "${d.line1}" in white, tilted slightly one way
+Line 2: "${d.line2}" in ${accent[1]} (${accent[0]}), larger, tilted slightly the other way
+Beneath, one small light gray line, no tilt: "${d.subtitle}"
+
+ICONS: scattered around the title at varied playful angles and sizes, like stickers, generous spacing, none overlapping the text:
+${logoLines}
+
+STYLE: fun, energetic, approachable — confident but not corporate.
+DO NOT include: excessive tilt that hurts legibility, human figures, charts, money imagery, clutter of any kind.`,
+    ],
+    elegant: [
+      // slim serif/refined title, generous whitespace, icons minimal and small
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, refined and minimal composition.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean, generous negative space — at least half the image should be empty space.
+
+CENTER, modestly sized (not filling the frame): an elegant thin-weight or refined serif-style two-line title:
+Line 1: "${d.line1}" in a muted dark tone
+Line 2: "${d.line2}" in ${accent[1]} (${accent[0]}), slightly larger, understated not shouty
+Below, a thin ${accent[1]} horizontal rule, then one small line: "${d.subtitle}"
+
+ICONS: small, few, tastefully placed at the far edges only — quality over quantity, never crowding the composition:
+${logoLines}
+
+STYLE: refined, premium, boutique — like a high-end studio's portfolio cover, not a loud sales poster.
+DO NOT include: bold ultra-heavy fonts, glows, clutter, human figures, charts, money imagery.`,
+    ],
+    minimal: [
+      // one word, enormous, nothing else
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, extreme minimalism.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), absolutely nothing else on it except the text below.
+
+CENTER: only the single word "${d.line2}" in massive ultra-bold sans-serif, filling most of the image width, color ${accent[1]} (${accent[0]}).
+Directly beneath it, small and understated: "${d.line1}" in a muted tone, then one smaller line: "${d.subtitle}"
+
+ICONS (optional, use sparingly — at most 2, small, in opposite corners, only if they add real clarity):
+${logoLines}
+
+STYLE: brutally simple, huge confidence in the typography alone, no ornamentation whatsoever.
+DO NOT include: glows, gradients, more than 2 icons, patterns, human figures, charts, money imagery, clutter of any kind.`,
+    ],
+  };
+  const TONES = Object.keys(LAYOUTS);
+
+  // Shared step 1: have the LLM design the poster's text/icon content AND
+  // pick a tone that fits the niche, then render it into a full
+  // image-generation prompt using a layout + palette matching that tone.
   async function craftImagePrompt(kw) {
     const raw = await ask(`Keywords: ${kw}`,
       `Design the text and icon content for a premium Fiverr gig thumbnail poster about: ${kw}.
@@ -863,12 +1185,14 @@ Return ONLY valid JSON:
   "line1": "FIRST BOLD WORD (1-2 words, ALL CAPS, the general category — e.g. PYTHON, WEB DESIGN, VIDEO EDITING)",
   "line2": "SECOND BOLD WORD (1 word, ALL CAPS, the standout highlight — e.g. PRO, EXPERT, BOT, SERVICES — bigger than line1)",
   "subtitle": "3-5 short related keywords separated by a bullet, relevant to this exact gig",
-  "logos": ["Name1", "Name2", "Name3", "Name4", "Name5", "Name6"]
+  "logos": ["Name1", "Name2", "Name3", "Name4", "Name5", "Name6"],
+  "tone": "one of: bold, corporate, playful, elegant, minimal — whichever best fits how buyers in this niche think and shop"
 }
 Rules:
 - line1 and line2 together form the poster's main title — short, punchy, together read like a service name.
-- line2 must be a high-impact power word that maximizes click-through when a buyer scans small search thumbnails — e.g. PRO, EXPERT, MASTER, NINJA, WIZARD, GURU, DONE-FOR-YOU, ON-DEMAND. Pick whichever fits the niche's tone best (playful niches can use NINJA/WIZARD, technical/corporate niches should use PRO/EXPERT/MASTER).
+- line2 must be a high-impact power word that maximizes click-through when a buyer scans small search thumbnails — e.g. PRO, EXPERT, MASTER, NINJA, WIZARD, GURU, DONE-FOR-YOU, ON-DEMAND. Pick whichever fits the niche's tone best.
 - logos: real, well-known software/tool/platform names strongly associated with this niche (e.g. for a Python gig: Python, Django, Flask, PostgreSQL, Docker, AWS). If the niche has no well-known brand tools, return short generic icon descriptions instead (e.g. "gear icon", "paintbrush icon", "camera icon"). Provide up to 6.
+- tone guide: "bold" = tech/trading/automation/high-energy services. "corporate" = business/consulting/professional B2B services. "playful" = social media/entertainment/casual creative services. "elegant" = luxury branding/high-end design/wedding/premium creative services. "minimal" = anything where the service itself is the whole story and needs zero decoration (e.g. pure copywriting, pure code, pure data work).
 JSON only, no markdown.`
     );
 
@@ -883,9 +1207,11 @@ JSON only, no markdown.`
       .map((l, i) => `${positions[i] || 'scattered'}: ${l} logo/icon`)
       .join('\n');
 
-    const bg = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+    const tone = TONES.includes(d.tone) ? d.tone : pick(TONES);
+    const palettesForTone = PALETTES.filter(p => p[4] === tone);
+    const bg = pick(palettesForTone.length ? palettesForTone : PALETTES);
     const accent = [bg[2], bg[3]];
-    const buildPrompt = LAYOUTS[Math.floor(Math.random() * LAYOUTS.length)];
+    const buildPrompt = pick(LAYOUTS[tone]);
     const ctrNote = `\n\nOPTIMIZE FOR CLICK-THROUGH: this image will appear tiny in Fiverr search results, competing against dozens of other thumbnails. Maximum contrast between text and background so the title is instantly legible even at thumbnail size. Bold, confident, scroll-stopping — not subtle or muted.`;
     return buildPrompt(d, bg, accent, logoLines) + ctrNote;
   }
@@ -903,49 +1229,8 @@ JSON only, no markdown.`
     await sleep(1800);
   });
 
-  // Step 2 (optional, needs an OpenAI key in the popup): actually render the
-  // image and drop it straight into Fiverr's gallery upload input.
-  const imgBtn = makeBtn('◆ Generate Image', async (kw, setStatus) => {
-    setStatus('⟳ Writing prompt…');
-    const prompt = await craftImagePrompt(kw);
-    setStatus('⟳ Rendering image…');
-    const b64 = await requestImage(prompt);
-    setStatus('⟳ Uploading to gallery…');
-    const input = document.querySelector('input[type="file"][accept*="image" i]');
-    if (!input) throw new Error('Could not find the gallery upload field on this page');
-    await attachBase64ToFileInput(input, b64, `brainbox-gig-${Date.now()}.png`);
-    setStatus('✓ Image added');
-  });
-
-  if (heading) { heading.after(imgBtn); heading.after(promptBtn); }
-  else { anchor.before(imgBtn); anchor.before(promptBtn); }
-}
-
-// Calls the background worker's image-generation pipeline (OpenAI Images API,
-// key never leaves chrome.storage.sync except in the direct HTTPS request to
-// api.openai.com made from background.js). Returns raw base64 PNG data.
-async function requestImage(prompt) {
-  const res = await chrome.runtime.sendMessage({ type: 'AI_IMAGE', payload: { prompt } });
-  if (res.error) throw new Error(res.error);
-  return res.result;
-}
-
-// Converts a base64 PNG into a real File object and assigns it to a file
-// input via DataTransfer, then fires the events React needs to notice the
-// new file — the same trick used everywhere else in this file for typed
-// input, just applied to <input type="file"> instead of a textbox.
-async function attachBase64ToFileInput(input, base64, filename) {
-  const byteChars = atob(base64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-  const file = new File([bytes], filename, { type: 'image/png' });
-
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  input.files = dt.files;
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  await sleep(rand(300, 600));
+  if (heading) heading.after(promptBtn);
+  else anchor.before(promptBtn);
 }
 
 // Traverse up from el to find a visible button matching pattern (up to maxLevels ancestors)

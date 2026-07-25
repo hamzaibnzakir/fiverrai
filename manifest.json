@@ -1,14 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Brainbox Gig AI — Fiverr Autofill",
-  "version": "2.1.0",
-  "description": "Brainbox Ecom Lab's AI copilot for Fiverr: autofills gig pages and seller profile with Claude (or free Groq) using human-like typing, and generates gig thumbnail images.",
+  "version": "3.0.0",
+  "description": "Brainbox Ecom Lab's AI copilot for Fiverr: autofills gig pages and seller profile with Claude (or free Groq) using human-like typing, live market research, and click-optimized thumbnail prompts.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://www.fiverr.com/*",
     "https://api.anthropic.com/*",
-    "https://api.groq.com/*",
-    "https://api.openai.com/*"
+    "https://api.groq.com/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -39,6 +39,19 @@
   font-family: inherit;
 }
 .fai-niche-bar input::placeholder { color: #6C6C86; font-style: italic; }
+.fai-niche-bar #fai-refresh-research {
+  background: rgba(124,92,252,0.14);
+  border: 1px solid rgba(124,92,252,0.30);
+  border-radius: 8px;
+  color: #EDEDF5;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  line-height: 1;
+  transition: transform 0.15s, background 0.15s;
+}
+.fai-niche-bar #fai-refresh-research:hover { background: rgba(124,92,252,0.26); transform: rotate(45deg); }
+.fai-niche-bar #fai-refresh-research:disabled { opacity: 0.5; cursor: default; }
 .fai-niche-bar span {
   font-size: 10px;
   color: #8F73FF;

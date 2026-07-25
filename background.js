@@ -9,9 +9,12 @@
 //     Chrome profile. They are never written to any Brainbox server,
 //     analytics endpoint, or third-party domain.
 //   - This file is the ONLY place network requests are made. It only ever
-//     talks to api.anthropic.com, api.groq.com, and api.openai.com — the
-//     three hosts declared in manifest.json. There is no telemetry, no
-//     logging service, and no "phone home" call anywhere in this codebase.
+//     talks to api.anthropic.com and api.groq.com — the two hosts declared
+//     in manifest.json. There is no telemetry, no logging service, and no
+//     "phone home" call anywhere in this codebase. Market research reuses
+//     Claude's own web_search tool (still just api.anthropic.com) plus a
+//     same-origin fetch to fiverr.com made from content.js — never a new
+//     third-party host.
 //   - Keys are never included in console.log output. If you need to debug,
 //     log response status codes, not headers or payloads.
 //
@@ -32,7 +35,6 @@
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations';
 
 const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5';
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
@@ -43,8 +45,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       handleAIRequest(msg.payload).then(sendResponse).catch(err => sendResponse({ error: err.message }));
       return true;
 
-    case 'AI_IMAGE':
-      handleImageRequest(msg.payload).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+    case 'MARKET_RESEARCH':
+      handleMarketResearch(msg.payload).then(sendResponse).catch(() => sendResponse({ result: '' }));
       return true;
 
     // Legacy message type kept so nothing silently breaks if an older
@@ -57,8 +59,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 function getSettings() {
   return new Promise(r => chrome.storage.sync.get(
-    ['anthropicKeys', 'anthropicApiKey', 'groqKeys', 'groqApiKey', 'openaiKeys', 'openaiApiKey',
-     'provider', 'model', 'groqModel', 'imageModel', 'temperature'],
+    ['anthropicKeys', 'anthropicApiKey', 'groqKeys', 'groqApiKey',
+     'provider', 'model', 'groqModel', 'temperature'],
     r
   ));
 }
@@ -208,48 +210,37 @@ async function handleAIRequest(payload) {
   throw new Error('All configured API keys were rate-limited, invalid, or unreachable. Try again shortly, or add a backup key.');
 }
 
-// ── Gig thumbnail image generation ──────────────────────────────────────
-// Two-step pipeline: Claude (or Groq) writes the creative prompt, then the
-// OpenAI Images API renders it. Returns a base64 PNG the content script
-// turns into a real File and drops into Fiverr's gallery upload input.
-
-async function handleImageRequest(payload) {
+// ── Live market research (Claude web_search tool) ───────────────────────
+// This is a secondary, qualitative signal layer — NOT the primary source of
+// pricing/ranking data. The primary source is content.js's own interception
+// of Fiverr's search-results page for the niche (real, first-party, live
+// prices/tags/titles from what's actually ranking). This function fills in
+// what that can't see: recent buyer sentiment, seasonal angles, category
+// trend context. See content.js researchMarket() for how the two combine.
+async function handleMarketResearch(payload) {
   const stored = await getSettings();
-  const openaiKeys = keyList('openaiKeys', 'openaiApiKey', stored);
-  if (!openaiKeys.length) {
-    throw new Error('Image generation requires an OpenAI API key (used only for image rendering). Add one in the Images tab.');
+  const claudeKeys = keyList('anthropicKeys', 'anthropicApiKey', stored);
+  if (!claudeKeys.length) {
+    // Web search is a Claude-only tool (Groq has no equivalent here) — if no
+    // Claude key is configured, just skip this layer silently. Callers treat
+    // a null/empty result as "no qualitative context available" and proceed
+    // with whatever first-party Fiverr data they already scraped.
+    return { result: '' };
   }
 
-  let lastErr = null;
-  for (const key of openaiKeys) {
-    try {
-      const res = await fetch(OPENAI_IMAGES_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model: stored.imageModel || 'gpt-image-1',
-          prompt: payload.prompt,
-          size: payload.size || '1536x1024',
-          n: 1,
-        }),
-      });
+  const opts = {
+    prompt: payload.prompt,
+    systemPrompt: payload.systemPrompt,
+    model: stored.model,
+    maxTokens: payload.maxTokens || 1024,
+    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+  };
 
-      if (res.status === 429 || res.status === 401) { lastErr = new Error(`Image API error ${res.status}`); continue; }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Image API error ${res.status}`);
-      }
-
-      const data = await res.json();
-      const b64 = data?.data?.[0]?.b64_json;
-      if (!b64) throw new Error('Image API returned no image data.');
-      return { result: b64 };
-    } catch (e) {
-      lastErr = e;
-    }
+  for (const key of claudeKeys) {
+    const result = await callClaudeWithKey(key, opts);
+    if (result) return { result: result.text };
   }
-  throw new Error(lastErr?.message || 'Image generation failed on all configured keys.');
+  // All keys failed/rate-limited — degrade gracefully, don't block the gig
+  // generation flow over an optional enrichment step.
+  return { result: '' };
 }

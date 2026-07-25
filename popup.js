@@ -52,17 +52,18 @@ const KW_PLACEHOLDERS = [
 
 // ── Load saved values ───────────────────────────────────────────────────
 
-chrome.storage.local.get(['faiKeywords', 'faiEnabled', 'faiName', 'faiYears', 'faiCountry'], (d) => {
+chrome.storage.local.get(['faiKeywords', 'faiEnabled', 'faiResearch', 'faiName', 'faiYears', 'faiCountry'], (d) => {
   if (d.faiKeywords) document.getElementById('fai-kw').value = d.faiKeywords;
   if (d.faiName)    document.getElementById('fai-name').value = d.faiName;
   if (d.faiYears)   document.getElementById('fai-years').value = d.faiYears;
   if (d.faiCountry) document.getElementById('fai-country').value = d.faiCountry;
   document.getElementById('faiEnabled').checked = d.faiEnabled !== false;
+  document.getElementById('faiResearch').checked = d.faiResearch !== false;
 });
 
 chrome.storage.sync.get([
-  'anthropicKeys', 'groqKeys', 'openaiKeys',
-  'provider', 'model', 'groqModel', 'imageModel', 'temperature'
+  'anthropicKeys', 'groqKeys',
+  'provider', 'model', 'groqModel', 'temperature'
 ], (s) => {
   const ck = s.anthropicKeys || [];
   ['ck1', 'ck2'].forEach((id, i) => { if (ck[i]) document.getElementById(id).value = ck[i]; });
@@ -70,13 +71,9 @@ chrome.storage.sync.get([
   const gk = s.groqKeys || [];
   ['gk1', 'gk2', 'gk3'].forEach((id, i) => { if (gk[i]) document.getElementById(id).value = gk[i]; });
 
-  const ok = s.openaiKeys || [];
-  if (ok[0]) document.getElementById('ok1').value = ok[0];
-
   setProvider(s.provider || 'claude');
   if (s.model) document.getElementById('claudeModelSelect').value = s.model;
   if (s.groqModel) document.getElementById('groqModelSelect').value = s.groqModel;
-  if (s.imageModel) document.getElementById('imageModelSelect').value = s.imageModel;
 
   if (s.temperature !== undefined) {
     const t = Math.round(s.temperature * 10);
@@ -102,6 +99,10 @@ document.getElementById('saveKw').addEventListener('click', () => {
 
 document.getElementById('faiEnabled').addEventListener('change', function () {
   chrome.storage.local.set({ faiEnabled: this.checked });
+});
+
+document.getElementById('faiResearch').addEventListener('change', function () {
+  chrome.storage.local.set({ faiResearch: this.checked });
 });
 
 // ── Provider priority pills ─────────────────────────────────────────────
@@ -177,14 +178,4 @@ document.getElementById('tempRange').addEventListener('input', function () {
 document.getElementById('saveTemp').addEventListener('click', () => {
   const temperature = parseFloat(document.getElementById('tempRange').value) / 10;
   chrome.storage.sync.set({ temperature }, () => toast('◆ Temperature saved'));
-});
-
-// ── Image (OpenAI) key ───────────────────────────────────────────────────
-
-document.getElementById('saveImage').addEventListener('click', () => {
-  const key = document.getElementById('ok1').value.trim();
-  const imageModel = document.getElementById('imageModelSelect').value;
-  chrome.storage.sync.set({ openaiKeys: key ? [key] : [], imageModel }, () => {
-    if (!key) toast('Image key cleared'); else toast('◆ Image settings saved');
-  });
 });

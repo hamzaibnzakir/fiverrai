@@ -1,8 +1,8 @@
 # Brainbox Gig AI
 
-A Chrome extension, owned and operated by **Brainbox Ecom Lab**, that fills out your Fiverr gig pages and seller profile using **Claude** (Anthropic) or free **Groq** models with human-like typing, and generates gig thumbnail images end-to-end.
+A Chrome extension, owned and operated by **Brainbox Ecom Lab**, that fills out your Fiverr gig pages and seller profile using **Claude** (Anthropic) or free **Groq** models with human-like typing — grounded in **live Fiverr market research** instead of guesswork.
 
-Originally forked from an open-source Groq-only autofill tool and substantially rebuilt: multi-provider AI backend, more human-sounding output, and real image generation replace the single-provider, prompt-only version.
+Originally forked from an open-source Groq-only autofill tool and substantially rebuilt: multi-provider AI backend, more human-sounding output, live pricing/ranking research, and a text-only (no third-party image API) thumbnail-prompt workflow.
 
 ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-green?style=for-the-badge)
@@ -16,39 +16,41 @@ Originally forked from an open-source Groq-only autofill tool and substantially 
 | Feature | Before | Now |
 |---|---|---|
 | AI backend | Groq only | **Claude (primary)** with automatic fallback to **Groq (free)** — set your preferred order in the popup |
-| Writing quality | Templated, AI-sounding | **Human-voice prompts** (bans AI clichés, varies rhythm) + **upgraded typing simulation** with realistic typos, corrections, and uneven cadence |
-| Gig images | Copies a text prompt to paste into ChatGPT/another tool manually | **◆ Generate Image** renders the thumbnail via the OpenAI Images API and drops it straight into Fiverr's gallery upload field — the old "◆ Generate Image Prompt" copy-only button is still there if you'd rather use it elsewhere |
+| Writing quality | Templated, AI-sounding | **Human-voice prompts** (bans AI clichés, varies rhythm) + realistic typing simulation |
+| **Pricing & keywords** | **Guessed by the LLM** — same rough price bands and made-up "trending" tags for every gig | **Live Market Research** — before generating, the extension pulls Fiverr's own current search results for your niche (real prices, real ranking titles, real recurring tags) and grounds title/tags/packages/description in that data. Runs automatically, shows a live status ("⟳ Researching market… → Found 14 ranking gigs…"), caches per niche for 30 min, manual 🔄 refresh available |
+| Gig description | Seller-bio-first, no length budget, no TOS guardrails | Rewritten around researched best practice: buyer-problem-first hook (never opens with "I"), keyword placed naturally early, tightened to ~900-1050 chars (safely under Fiverr's 1,200 hard cap), explicit bans on off-platform contact info, fake guarantees, emojis/caps-spam |
+| Gig images | Rendered via the OpenAI Images API and auto-uploaded | **OpenAI removed entirely.** `◆ Generate Image Prompt` writes a click-optimized thumbnail prompt (now tone-aware: bold/corporate/playful/elegant/minimal, 12 palettes) and copies it to your clipboard to paste into whatever image tool you like |
 | Ownership/branding | Third-party author | Brainbox Ecom Lab |
 
 Everything else — the gig editor autofill, profile/bio/work-experience/skills automation, human-like typing, the per-gig niche bar — is carried over unchanged.
 
 ### Fixed: `` `temperature` is deprecated for this `` (400 error on every Claude call)
 
-As of Claude Opus 4.7+/4.8 and Claude Sonnet 5, Anthropic's Messages API hard-rejects any request that sets a non-default `temperature`, `top_p`, or `top_k` — the previous build always sent `temperature`, so every single Claude call 400'd. Fixed in `background.js`:
+As of Claude Opus 4.7+/4.8 and Claude Sonnet 5, Anthropic's Messages API hard-rejects any request that sets a non-default `temperature`, `top_p`, or `top_k`. Fixed in `background.js`:
 
 - Claude requests never send `temperature`/`top_p`/`top_k` anymore, on any model.
-- The popup's Creativity slider still works exactly like before — it's just no longer sent as a raw number to Claude. It's translated into a plain-English instruction appended to the prompt ("vary your phrasing" / "be precise and literal"), so the *intent* survives without tripping the 400.
-- Groq is unaffected and still receives `temperature` normally — Anthropic's deprecation doesn't apply there.
-- Also updated the web-search tool version string to Anthropic's current one, and gave Claude requests a bit more `max_tokens` headroom, since Sonnet 5's adaptive thinking (on by default) consumes some of the token budget before the visible answer.
+- The popup's Creativity slider still works — it's translated into a plain-English instruction appended to the prompt instead of a raw param, so the *intent* survives without tripping the 400.
+- Groq is unaffected and still receives `temperature` normally.
 
 ---
 
 ## Features
 
 ### Gig Editor
-- **AI Title** — Compelling "I will..." titles under 80 characters
-- **Auto Tags** — 5 relevant gig search tags
-- **3-Tier Packages** — Basic / Standard / Premium with unique names, Fiverr-style descriptions, and realistic prices
-- **Formatted Description** — Question hook, intro, "I can develop" bullets, "Why choose me?" bullets, closing, and CTA
-- **5 FAQs** — Buyer-voiced questions with personal, specific, first-person answers
+- **AI Title** — Compelling "I will..." titles under 60 characters, informed by live ranking title patterns
+- **Auto Tags** — 5 relevant gig search tags, cross-checked against terms that actually repeat in top-ranking results right now
+- **3-Tier Packages** — Basic / Standard / Premium with unique names, Fiverr-style descriptions, and prices grounded in the real live median for your niche (falls back to model judgment if no live data is found)
+- **Formatted Description** — Buyer-first hook, service overview, "I can develop" bullets, "Why choose me?" bullets, closing, CTA — tightened to fit safely under Fiverr's 1,200-char cap, with explicit TOS-safety rules baked into the prompt
+- **5 FAQs** — Buyer-voiced questions with personal, specific, first-person answers, same TOS-safety rules as the description
 - **Buyer Requirements** — Auto-fills and marks required
-- **Gig Thumbnail Image** — writes an optimized poster prompt and renders it directly into the gallery upload field
-- **Per-Gig Niche Input** — a niche bar is injected on each gig page
+- **Gig Thumbnail Prompt** — writes a tone-matched, click-optimized poster prompt (12 palettes × 5 style families) and copies it to your clipboard — paste into any image generator you prefer
+- **Per-Gig Niche Input** — a niche bar is injected on each gig page, with a 🔄 button to force-refresh live market data
 
 ### Seller Profile
 - **Bio / About**, **Work Experience**, **Skills** — personalized with your name, years, and country
 
 ### General
+- **Live Market Research** — one same-origin fetch to Fiverr's own search results per niche (not a crawl — behaves like one manual search), 30-min session cache, always shown as a visible status so it never looks hung. Toggle on/off in the popup under **Extension → Live Market Research**
 - **Stop Button** — every AI button becomes a Stop button while running
 - **Human-like Typing** — character-by-character input with realistic typos + corrections, uneven cadence, and thinking pauses, all dispatched as real DOM events so Fiverr's React app registers it as genuine user input
 - **Multi-key Rotation** — up to 2 Claude keys and 3 Groq keys, auto-rotated on rate limit
@@ -71,10 +73,10 @@ As of Claude Opus 4.7+/4.8 and Claude Sonnet 5, Anthropic's Messages API hard-re
 
 1. Click the extension icon → **AI Provider** tab
 2. Paste an Anthropic (Claude) key and/or a free Groq key, pick which one goes first, click **◆ Save**
-3. *(Optional)* **Images** tab → paste an OpenAI key to enable one-click gig thumbnail generation
-4. **Keywords** tab → fill in your profile info (name, years, country) and profile niche → **◆ Save Profile**
+3. **Keywords** tab → fill in your profile info (name, years, country) and profile niche → **◆ Save Profile**
+4. Same screen → toggle **Live Market Research** on/off (on by default)
 
-You need **at least one** of Claude or Groq for text generation. Image generation needs its own OpenAI key — everything else works fine without it.
+You need **at least one** of Claude or Groq. That's it — there's no separate image-provider key anymore.
 
 ---
 
@@ -82,9 +84,9 @@ You need **at least one** of Claude or Groq for text generation. Image generatio
 
 ### Gig Pages
 1. Go to **Selling → Gigs → Create a New Gig** (or edit existing)
-2. A **◆ Niche** bar appears at the top of the editor — type your gig niche there
-3. Click any **◆ Generate** button to fill that field
-4. On the Gallery step, click **◆ Generate Image** to render and upload a thumbnail, or **◆ Generate Image Prompt** to just copy the prompt
+2. A **◆ Niche** bar appears at the top of the editor — type your gig niche there. A 🔄 button next to it force-refreshes live market data for that niche on demand
+3. Click any **◆ Generate** button to fill that field — market research runs automatically the first time and is reused for the rest of that niche's generations
+4. On the Gallery step, click **◆ Generate Image Prompt** to copy a thumbnail prompt for pasting into any image tool
 5. Review everything and click **Save & Continue**
 
 ### Profile Page (`fiverr.com/sellers/.../edit`)
@@ -92,12 +94,27 @@ You need **at least one** of Claude or Groq for text generation. Image generatio
 
 ---
 
+## Live Market Research — how it works, and its limits
+
+Before generating title/tags/packages/description for a niche, the extension makes **one** same-origin `fetch()` to Fiverr's own `/search/gigs?query=...` page — functionally identical to you typing that search and hitting enter, under your normal logged-in session. No new host permission, no third-party scraping service, no polling.
+
+It then tries two parsing strategies, in order, and stops at the first one that returns results:
+1. **JSON hydration** — many SPAs (Fiverr included) embed the page's initial data as a JSON blob in a `<script>` tag; this looks for a few common variable names and heuristically mines any gig-shaped objects (a title-like field + a price-like field) out of whatever it finds, without needing to know the exact schema in advance.
+2. **DOM fallback** — if no JSON blob matches, it parses the raw HTML and pattern-matches on visible `$NN` price text near a heading/link, the same resilient-selector philosophy used elsewhere in this codebase for the skills/companies dropdowns.
+
+If both come back empty, `researchMarket()` returns `null` and **every** calling feature falls back to exactly the behavior this extension had before this feature existed — pricing/tags are never blocked or broken by a missed scrape.
+
+**Honesty note:** the two strategies above were written defensively and pass a JS syntax/logic check, but they have not been confirmed against a live, logged-in Fiverr session — that part of the verification needs one real test pass on your end. Open devtools → Console on a gig page and look for `[fai-research]` breadcrumbs when you click a Generate button; they'll tell you whether JSON hydration matched, the DOM fallback matched, or neither did.
+
+---
+
 ## Security / No API Leaks
 
 - API keys are stored **only** in `chrome.storage.sync` (synced to your own signed-in Chrome profile, nowhere else) and `chrome.storage.local`.
-- `background.js` is the **only** file that makes network requests, and it only ever talks to `api.anthropic.com`, `api.groq.com`, and `api.openai.com` — exactly the three hosts declared in `manifest.json`'s `host_permissions`. There is no analytics, no telemetry, no logging server, and no request to any Brainbox-owned or third-party endpoint.
+- `background.js` is the **only** file that makes cross-origin network requests, and it only ever talks to `api.anthropic.com` and `api.groq.com` — exactly the two hosts declared in `manifest.json`'s `host_permissions`. There is no analytics, no telemetry, no logging server, and no request to any Brainbox-owned or third-party endpoint.
+- The one Fiverr-side request (market research) is same-origin, made from `content.js` running on `fiverr.com` itself, using your existing session — not a new external host, and not visible to any server outside Fiverr and Anthropic.
 - Keys are never printed to the console and never included in error messages surfaced to the popup.
-- The extension only requests the `storage` permission plus host access to Fiverr and the three AI providers — no `activeTab`, no broad `<all_urls>` access.
+- The extension only requests the `storage` permission plus host access to Fiverr and the two AI providers — no `activeTab`, no broad `<all_urls>` access.
 - If you fork this further, keep the network request logic centralized in `background.js` so this guarantee stays easy to audit.
 
 ---
@@ -107,12 +124,12 @@ You need **at least one** of Claude or Groq for text generation. Image generatio
 ```
 brainbox-gig-ai/
 ├── manifest.json       # MV3 config
-├── background.js       # Service worker — Claude/Groq text calls, OpenAI image calls
-├── content.js          # Injected into Fiverr — all AI buttons and automation
-├── styles.css           # Injected button and niche bar styles
-├── popup.html           # Popup UI — Keywords, AI Provider, Images tabs
-├── popup.js             # Popup logic
-├── fetch-lists.js       # One-time console script to fetch skills from Fiverr's own API
+├── background.js       # Service worker — Claude/Groq calls only
+├── content.js          # Injected into Fiverr — AI buttons, market research, automation
+├── styles.css          # Injected button and niche bar styles
+├── popup.html          # Popup UI — Keywords, AI Provider tabs
+├── popup.js            # Popup logic
+├── fetch-lists.js      # One-time console script to fetch skills from Fiverr's own API
 ├── data/
 │   ├── skills.json      # 360+ real Fiverr skills (bundled)
 │   └── companies.json   # Common company names for work experience
@@ -128,7 +145,10 @@ User fills niche bar on gig page (or profile niche in popup)
         ↓
 ◆ Generate button clicked
         ↓
-content.js builds a prompt with niche + profile info
+researchMarket(niche) — one same-origin fetch to Fiverr's own search
+results for this niche (cached 30 min), or null if unavailable
+        ↓
+content.js builds a prompt with niche + profile info + live market data
         ↓
 background.js calls Claude (or Groq, per your saved priority + fallback)
         ↓
@@ -138,14 +158,12 @@ Fiverr's editor, so Fiverr registers it as real user input
 ```
 
 ```
-◆ Generate Image clicked
+◆ Generate Image Prompt clicked
         ↓
-Claude/Groq writes a click-optimized thumbnail prompt (text + icon layout)
+Claude/Groq picks a tone (bold/corporate/playful/elegant/minimal) for
+this niche and writes a matching click-optimized thumbnail prompt
         ↓
-background.js sends that prompt to the OpenAI Images API
-        ↓
-Returned PNG is wrapped as a real File object via DataTransfer
-and dropped into Fiverr's gallery upload input
+Prompt copied to clipboard — paste into any image tool you like
 ```
 
 ---
@@ -156,14 +174,14 @@ and dropped into Fiverr's gallery upload input
 |---|---|
 | Extension | Chrome MV3, Vanilla JS |
 | Text AI | Anthropic Claude (`claude-sonnet-5` default) primary, Groq (`llama-3.3-70b-versatile` default) free fallback |
-| Image AI | OpenAI Images API (`gpt-image-1`) |
-| Storage | `chrome.storage.sync` (keys/model/provider) + `chrome.storage.local` (profile/skills) |
+| Market data | Fiverr's own search-results page, same-origin fetch from `content.js` |
+| Storage | `chrome.storage.sync` (keys/model/provider) + `chrome.storage.local` (profile/skills) + `sessionStorage` (per-niche research cache) |
 
 ---
 
 ## Notes
 
-- A word on the automation itself: the human-like typing and file-drop mechanics exist because Fiverr's editor is a React app that only registers input dispatched through real DOM events — this is standard front-end automation technique, not a security bypass. It automates **your own account**; it does not access anyone else's data or systems. That said, always review generated content before publishing, and use automation tools on Fiverr at your own discretion with respect to Fiverr's current Terms of Service.
+- A word on the automation itself: the human-like typing and file-drop mechanics exist because Fiverr's editor is a React app that only registers input dispatched through real DOM events — this is standard front-end automation technique, not a security bypass. It automates **your own account**; it does not access anyone else's data or systems. The market-research fetch is the same principle — one request under your own session, not a bypass of anything. That said, always review generated content before publishing, and use automation tools on Fiverr at your own discretion with respect to Fiverr's current Terms of Service.
 - The niche bar on gig pages is per-session — intentional, since each gig is different.
 - Skills and companies are bundled — no internet fetch needed on first run.
 
