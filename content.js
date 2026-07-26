@@ -350,6 +350,75 @@ async function fetchFiverrGigs(kw) {
   }
 }
 
+// ── Autocomplete-based keyword signal ───────────────────────────────────
+// A second, more authoritative signal alongside the search-results scrape
+// above: Fiverr's own site search box autocomplete reflects actual
+// aggregated buyer search behavior (what people really type), rather than
+// "words sellers happened to use in titles." This deliberately never
+// guesses at a specific API endpoint URL — it reuses this file's existing
+// generic fetch/XHR interceptor (injectApiInterceptor/waitForCapture, the
+// same mechanism fetchSkills/fetchCompanies already use) and just listens
+// for whatever request Fiverr's own search box naturally fires when text
+// is typed into it. If the search box isn't found on this page, or nothing
+// fires in time, this resolves to null — like every other piece of
+// researchMarket(), it can never throw or break generation.
+function findSiteSearchInput() {
+  const candidates = [...document.querySelectorAll('input[type="search"], input[type="text"]')]
+    .filter(el => isVisible(el) && (
+      /search/i.test(el.getAttribute('placeholder') || '') ||
+      /search/i.test(el.getAttribute('aria-label') || '') ||
+      /search/i.test(el.getAttribute('name') || '') ||
+      el.getAttribute('role') === 'searchbox'
+    ));
+  return candidates[0] || null;
+}
+
+async function fetchAutocompleteTerms(kw) {
+  const input = findSiteSearchInput();
+  if (!input) { console.debug('[fai-autocomplete] no search box found on this page'); return null; }
+
+  const original = input.value;
+  try {
+    injectApiInterceptor();
+
+    const capturePromise = waitForCapture((url, data) => {
+      // Require the URL to actually look autocomplete-shaped first — this
+      // interceptor sees EVERY network response on the page while it's
+      // active, not just search-related ones, so matching on response
+      // shape alone would risk grabbing an unrelated short string array
+      // from something else happening on the page at the same time.
+      if (!/suggest|autocomplete|typeahead|search_term|query/i.test(url)) return null;
+      const arrays = extractStringArrays(data);
+      const best = arrays.find(arr => arr.length) || null;
+      return best;
+    }, 4000);
+
+    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    input.focus();
+    ns?.call(input, kw);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+
+    const terms = await capturePromise;
+    if (!terms || !terms.length) { console.debug('[fai-autocomplete] no matching response captured'); return null; }
+
+    console.debug('[fai-autocomplete] captured', terms.length, 'suggestions');
+    return [...new Set(terms)].slice(0, 10);
+  } catch (e) {
+    console.debug('[fai-autocomplete] failed, degrading gracefully:', e.message);
+    return null;
+  } finally {
+    // Always restore the search box exactly as it was — this must be
+    // invisible to the seller and never leave stray text in Fiverr's own UI.
+    try {
+      const ns2 = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      ns2?.call(input, original);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.blur();
+    } catch {}
+  }
+}
+
 // Main entry point. Returns a market brief, or null if research is off,
 // nothing was found, or the fetch/parse failed for any reason — callers
 // must treat null as "proceed exactly like this feature doesn't exist."
@@ -361,18 +430,26 @@ async function researchMarket(kw, setStatus) {
 
   try {
     setStatus?.('⟳ Researching market…');
-    const gigs = await fetchFiverrGigs(kw);
-    if (!gigs.length) { setCachedResearch(kw, null); return null; }
+    // Both signals are independent — one failing never blocks the other.
+    const [gigsResult, autocompleteResult] = await Promise.allSettled([
+      fetchFiverrGigs(kw),
+      fetchAutocompleteTerms(kw),
+    ]);
+    const gigs = gigsResult.status === 'fulfilled' ? gigsResult.value : [];
+    const autocompleteTerms = autocompleteResult.status === 'fulfilled' ? autocompleteResult.value : null;
 
-    setStatus?.(`⟳ Found ${gigs.length} ranking gigs, analyzing…`);
+    if (!gigs.length && !autocompleteTerms) { setCachedResearch(kw, null); return null; }
+
+    if (gigs.length) setStatus?.(`⟳ Found ${gigs.length} ranking gigs, analyzing…`);
     const prices = gigs.map(g => g.price).filter(Boolean);
     const brief = {
       count: gigs.length,
-      medianPrice: median(prices),
+      medianPrice: prices.length ? median(prices) : null,
       minPrice: prices.length ? Math.min(...prices) : null,
       maxPrice: prices.length ? Math.max(...prices) : null,
-      commonTerms: topTerms(gigs.map(g => g.title)),
+      commonTerms: gigs.length ? topTerms(gigs.map(g => g.title)) : [],
       sampleTitles: gigs.slice(0, 8).map(g => g.title),
+      autocompleteTerms: autocompleteTerms || [],
     };
     setCachedResearch(kw, brief);
     return brief;
@@ -391,11 +468,12 @@ function forceRefreshResearch(kw) {
 function marketContext(brief) {
   if (!brief) return '';
   const lines = [];
+  if (brief.autocompleteTerms?.length) lines.push(`- Fiverr's own search-box autocomplete suggestions for this term (reflects actual buyer search behavior, the strongest signal here): ${brief.autocompleteTerms.join(', ')}`);
   if (brief.medianPrice) lines.push(`- Live median price among top-ranking gigs right now: ~$${brief.medianPrice} (range $${brief.minPrice}-$${brief.maxPrice}, sampled from ${brief.count} current results)`);
-  if (brief.commonTerms?.length) lines.push(`- Terms that repeat across top-ranking titles right now: ${brief.commonTerms.join(', ')}`);
+  if (brief.commonTerms?.length) lines.push(`- Terms that repeat across top-ranking titles right now (weaker signal — reflects seller competition, not confirmed buyer demand): ${brief.commonTerms.join(', ')}`);
   if (brief.sampleTitles?.length) lines.push(`- A few real titles ranking right now (pattern reference only — never copy or closely mirror these): ${brief.sampleTitles.slice(0, 5).join(' | ')}`);
   if (!lines.length) return '';
-  return `\n\nLIVE MARKET RESEARCH (real data just pulled from Fiverr's own search results for this niche):\n${lines.join('\n')}\nGround pricing in the real median above rather than guessing. Use the repeated terms/titles only to see what's saturated so you can differentiate — never copy them.`;
+  return `\n\nLIVE MARKET RESEARCH (real data just pulled from Fiverr for this niche):\n${lines.join('\n')}\nPrefer the autocomplete suggestions over the title-frequency terms when they conflict — they reflect what buyers actually search, not just what competitors happened to write. Ground pricing in the real median above rather than guessing. Never copy the sample titles.`;
 }
 
 // Pick a random item so repeated generations for the same keyword take a different creative angle
@@ -503,9 +581,15 @@ function injectNicheBar() {
     refreshBtn.disabled = true;
     const brief = await researchMarket(kw, (t) => { statusEl.textContent = t; });
     refreshBtn.disabled = false;
-    statusEl.textContent = brief
-      ? `✓ market data refreshed — ${brief.count} live gigs, ~$${brief.medianPrice} median`
-      : '— no live market data found for this niche';
+    if (!brief) {
+      statusEl.textContent = '— no live market data found for this niche';
+    } else {
+      const parts = [];
+      if (brief.count) parts.push(`${brief.count} live gigs`);
+      if (brief.medianPrice) parts.push(`~$${brief.medianPrice} median`);
+      if (brief.autocompleteTerms?.length) parts.push(`${brief.autocompleteTerms.length} search suggestions`);
+      statusEl.textContent = parts.length ? `✓ market data refreshed — ${parts.join(', ')}` : '✓ market data refreshed';
+    }
     setTimeout(() => { statusEl.textContent = 'powers all AI buttons'; }, 4000);
   });
 
@@ -1458,7 +1542,7 @@ function extractStringArrays(obj, depth = 0) {
   if (depth > 8 || !obj || typeof obj !== 'object') return [];
   if (Array.isArray(obj)) {
     const names = obj
-      .map(i => typeof i === 'string' ? i : (i?.name || i?.label || i?.title || i?.value || i?.text || null))
+      .map(i => typeof i === 'string' ? i : (i?.name || i?.label || i?.title || i?.value || i?.text || i?.term || i?.query || i?.suggestion || i?.keyword || null))
       .filter(s => s && typeof s === 'string' && s.length > 0 && s.length <= 120);
     if (names.length >= 4) return [names];
     return obj.flatMap(i => extractStringArrays(i, depth + 1));
