@@ -747,10 +747,11 @@ function injectPage3() {
 FIVERR PLATFORM RULES (this field has a hard 1,200-character cap and gets flagged/truncated past it — the whole description across every field below must total roughly 900-1050 visible characters, comfortably under the cap, not up against it):
 - hook: ${hookStyle} 1 sentence, max 110 chars. Never start with "I" — open on the buyer's problem or the outcome, not on yourself.
 - intro: 1 sentence framed around the BUYER's situation and what they get — who this is for and what problem it solves. Do not lead with your own bio; if experience is mentioned at all, it's a trailing trust cue, not the subject of the sentence. Max 140 chars.
-- develop: exactly 6 specific things you can build/deliver for this niche (not 8 — keep the section scannable and inside the char budget). Short phrases, 4-8 words each. Diverse and specific to ${kw}.
+- develop: exactly 6 specific things you can build/deliver for this niche (not 8 — keep the section scannable and inside the char budget). Short phrases, 4-8 words each. Diverse and specific — vary the wording between bullets (different verbs, different angles on the service), don't just restate "${kw}" six times with different endings.
 - why: exactly 4 short selling points (not 6). 4-7 words each. ${whyStyle}
 - closing: 1 sentence wrapping up the offer, inviting them to order. Max 120 chars.
 - cta: one direct action sentence, 50-70 chars.
+- KEYWORD REPETITION CAP (this is the single most common reason Fiverr flags/rejects a description): the exact primary keyword phrase from "${kw}" may appear AT MOST 2 times in the ENTIRE output, combined across all fields — ideally once in the hook or intro, and at most once more anywhere else. Every other mention of the service must use a synonym, a related term, a pronoun ("it"/"this"), or just describe the deliverable without repeating the phrase. If you notice yourself about to use the exact phrase a 3rd time, rewrite that sentence around a synonym instead.
 - The primary keyword/service from "${kw}" must appear naturally within the hook or intro (Fiverr indexes description keywords, and early placement carries more weight) — but never stuff or repeat keywords artificially; write for the buyer first.
 - Avoid the most predictable, template-sounding phrasing — this should read differently each time it's generated, not like the same gig with nouns swapped.
 
@@ -854,6 +855,7 @@ RULES:
 - No unverifiable guarantees ("100% guaranteed," "#1," fake certifications) and no emojis or ALL-CAPS.
 - Questions: written as the buyer asking, casual and direct (e.g. "How long does it take?", "What do I get?").
 - Answers: confident, personal, first-person. 2 sentences max. 180-260 chars. Use real specifics — tool names, day counts, file types, numbers. Sound like a real seller, not a template.
+- Do not repeat the exact service phrase "${kw}" in every answer — use "it", "the project", "this", or a synonym in most answers. At most 1 of the 5 answers should restate the exact phrase.
 - BAD answer: "I will deliver high-quality results in a timely manner." GOOD answer: "Most projects take 3-5 days. I'll send you the full source code, manifest, and a setup guide."
 - ${voiceStyle}
 - Avoid reusing the most predictable phrasing — vary sentence structure and word choice so this doesn't read like a template filled in with different nouns.${HUMAN_VOICE}
@@ -1138,6 +1140,38 @@ ${logoLines}
 
 STYLE: fun, energetic, approachable — confident but not corporate.
 DO NOT include: excessive tilt that hurts legibility, human figures, charts, money imagery, clutter of any kind.`,
+
+      // speech-bubble/sticker-burst title, icons as a playful ring
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, playful sticker-poster composition.
+
+BACKGROUND: solid ${bg[1]} (${bg[0]}), flat and clean.
+
+CENTER: the title inside a bold rounded-sticker shape (soft rounded rectangle or blob outline) in ${accent[1]}, with a thin white or dark border for a die-cut sticker feel:
+Line 1: "${d.line1}" in white, inside the sticker shape
+Line 2: "${d.line2}" beneath it, larger, in a contrasting punchy color
+Just outside the sticker shape, small: "${d.subtitle}"
+
+ICONS: arranged in a loose ring orbiting the sticker shape, varied sizes like confetti, generous spacing:
+${logoLines}
+
+STYLE: bubbly, high-energy, social-media-native — think sticker pack or app-store feature graphic, not a corporate poster.
+DO NOT include: harsh edges, human figures, charts, money imagery, clutter of any kind.`,
+
+      // vertical bounce — title stacked at an angle down the left, icons cascading down the right
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, playful asymmetric composition.
+
+BACKGROUND: solid ${bg[1]} (${bg[0]}), flat, with a couple of soft blurred color-accent circles floating in empty corners (never behind the text).
+
+LEFT SIDE: the two-line title stacked with a slight upward-stepping stagger (line 2 sits slightly higher and to the right of line 1, like it's bouncing):
+Line 1: "${d.line1}" in white
+Line 2: "${d.line2}" in ${accent[1]} (${accent[0]}), larger
+Beneath, one small line: "${d.subtitle}"
+
+RIGHT SIDE: the following icons cascading down in a loose diagonal trail, varied sizes, playful spacing, none touching the text:
+${logoLines}
+
+STYLE: fun, kinetic, youthful energy — like an app onboarding illustration turned into a poster.
+DO NOT include: rigid grids, human figures, charts, money imagery, clutter of any kind.`,
     ],
     elegant: [
       // slim serif/refined title, generous whitespace, icons minimal and small
@@ -1155,6 +1189,38 @@ ${logoLines}
 
 STYLE: refined, premium, boutique — like a high-end studio's portfolio cover, not a loud sales poster.
 DO NOT include: bold ultra-heavy fonts, glows, clutter, human figures, charts, money imagery.`,
+
+      // centered frame — thin rectangular border, title and subtitle nested inside, like a gallery label
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, gallery-label composition.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean.
+
+CENTER: a thin single-pixel-weight rectangular frame line in ${accent[1]}, inset well within the image edges, with generous space between the frame and the border of the image. Inside the frame, vertically centered:
+Line 1: "${d.line1}" small, refined serif or thin sans, in a muted tone
+Line 2: "${d.line2}" larger, in ${accent[1]} (${accent[0]}), still restrained not bold
+Below both, inside the frame: one small line: "${d.subtitle}"
+
+ICONS: at most 2, placed just outside the frame's bottom corners, tiny and understated:
+${logoLines}
+
+STYLE: quiet luxury, museum-label restraint, boutique branding — nothing shouts.
+DO NOT include: heavy fonts, glows, gradients, clutter, human figures, charts, money imagery.`,
+
+      // left-third refined column — vertical accent rule, title right-aligned to it
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, editorial luxury composition.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean, no textures.
+
+A single thin vertical ${accent[1]} rule runs top-to-bottom about a third of the way across the image. To the right of that rule, vertically centered:
+Line 1: "${d.line1}" refined, muted tone
+Line 2: "${d.line2}" in ${accent[1]} (${accent[0]}), slightly larger
+Beneath: one small line: "${d.subtitle}"
+
+To the LEFT of the vertical rule (the narrow column), place at most 2-3 small icons stacked quietly, generous spacing:
+${logoLines}
+
+STYLE: boutique editorial, restrained, confident through simplicity not volume.
+DO NOT include: bold heavy fonts, glows, more than 3 icons, clutter, human figures, charts, money imagery.`,
     ],
     minimal: [
       // one word, enormous, nothing else
@@ -1170,6 +1236,39 @@ ${logoLines}
 
 STYLE: brutally simple, huge confidence in the typography alone, no ornamentation whatsoever.
 DO NOT include: glows, gradients, more than 2 icons, patterns, human figures, charts, money imagery, clutter of any kind.`,
+
+      // off-center single line, huge left margin, nothing else
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, radically minimal off-center composition.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), completely empty otherwise.
+
+Positioned in the lower-left third of the image (NOT centered), left-aligned:
+Line 1: "${d.line1}" small, muted tone
+Line 2: "${d.line2}" directly beneath it, massive, in ${accent[1]} (${accent[0]})
+Beneath that: one tiny line: "${d.subtitle}"
+The rest of the image — especially the upper-right two-thirds — stays completely empty.
+
+ICONS: none, or at most 1 tiny icon in the far opposite (upper-right) corner if absolutely necessary:
+${logoLines}
+
+STYLE: architectural, confident through emptiness, like a minimalist album cover.
+DO NOT include: centering the text, glows, gradients, patterns, human figures, charts, money imagery, clutter of any kind.`,
+
+      // small centered wordmark inside a thin circle outline, nothing else
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, badge-minimal composition.
+
+BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean.
+
+CENTER: a single thin circular outline in ${accent[1]}, modestly sized (roughly a third of the image height), with the title nested inside it:
+Line 1: "${d.line1}" small, muted tone, inside the circle near the top
+Line 2: "${d.line2}" bigger, in ${accent[1]} (${accent[0]}), inside the circle centered
+Directly beneath the circle, outside it: one small line: "${d.subtitle}"
+
+ICONS: none inside the circle. At most 2, tiny, outside the circle at the far edges of the frame:
+${logoLines}
+
+STYLE: emblem-like, quiet confidence, a huge amount of empty space around the circle.
+DO NOT include: filling the circle, glows, gradients, clutter, human figures, charts, money imagery.`,
     ],
   };
   const TONES = Object.keys(LAYOUTS);
