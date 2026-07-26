@@ -1017,6 +1017,10 @@ function injectPage5() {
     ['#0C1210', 'deep pine black', '#7FFFD4', 'aquamarine', 'minimal'],
     ['#111111', 'matte black', '#FFFFFF', 'pure white', 'minimal'],
     ['#1A0F1F', 'deep plum', '#FF6EC7', 'hot pink', 'playful'],
+    // Presenter-tone palettes, matched to real reference examples (gradient blobs, not flat)
+    ['#0A0E2E', 'deep blue-purple glow gradient', '#00D9FF', 'electric cyan', 'presenter'],
+    ['#0D2B12', 'deep green gradient with lighter green blobs', '#FFE600', 'bright yellow', 'presenter'],
+    ['#2B0A3D', 'deep purple-magenta radial gradient', '#FFFFFF', 'pure white', 'presenter'],
   ];
 
   // Layout skeletons, grouped by tone. Each returns the full prompt given
@@ -1270,6 +1274,46 @@ ${logoLines}
 STYLE: emblem-like, quiet confidence, a huge amount of empty space around the circle.
 DO NOT include: filling the circle, glows, gradients, clutter, human figures, charts, money imagery.`,
     ],
+    presenter: [
+      // Simple presenter: highlighted pretitle + huge headline + tool badges + CTA button, person bleeding off the right edge
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. Professional marketing-banner composition with a real presenter photo — this is the single most important element, do not omit it.
+
+BACKGROUND: ${bg[1]} (${bg[0]}) filling the entire image, with soft organic glow/blob shapes and a few thin scattered geometric accents (small circles, dashes) in the empty background areas only — never behind or near text.
+
+RIGHT SIDE (roughly the right 35-40% of the image, bleeding off the right edge): a photoreal, professional-looking person, cropped from the waist up, warm confident smile, direct eye contact with the camera, modern business-casual attire (blazer or smart top). Generic stock-photo style — not a specific real named individual.
+
+LEFT SIDE (roughly the left 60-65%), everything left-aligned:
+- Small pre-title inside a solid rounded highlight box (bright contrasting color, e.g. yellow or white): "${d.line1}"
+- Directly beneath, the massive main headline in ultra-bold sans-serif: "${d.line2}" in ${accent[1]} (${accent[0]}) or white, dominating the left side
+- Beneath the headline, a row of 3-4 small white circular badges, each containing one recognizable tool/platform icon:
+${logoLines}
+- Beneath the badges, a rounded pill-shaped button graphic with a small arrow icon, containing the text: "${d.cta || 'ORDER NOW'}"
+
+That is all the text on the image.
+
+STYLE: polished, trustworthy, high-converting marketing banner — like a professional service ad, not an abstract poster.
+DO NOT include: more than one person, distorted faces, extra limbs, fully covering the person with text, charts, screenshots, money imagery, misspelled text.`,
+
+      // Infographic presenter: adds a benefits checklist + trust seal + device mockup, matching the fuller reference example
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. Dense, professional infographic-style marketing banner with a real presenter photo — the person and the checklist are both essential, do not omit either.
+
+BACKGROUND: ${bg[1]} (${bg[0]}), rich gradient with soft glow accents, subtle fine dot-grid texture in the darkest corner only.
+
+TOP-LEFT: the two-part bold headline stacked, large: "${d.line1}" in white directly above "${d.line2}" in ${accent[1]} (${accent[0]}), bigger. A small relevant icon sits just to the left of the first line.
+Directly beneath the headline, a short highlighted subtitle bar: "${d.subtitle}"
+
+BELOW THAT, a two-column checklist of ${(d.features && d.features.length) || 8} short rounded pill-shaped rows, each containing a small circular icon plus a short label (2-4 words), covering distinct things included in this service:
+${(d.features || []).map(f => `- ${f}`).join('\n')}
+
+CENTER-RIGHT, overlapping the transition between the checklist and the photo: a circular badge/seal graphic reading "100% Satisfaction Guaranteed", with a small upward trend arrow icon nearby and the words "${d.cta ? d.cta.toUpperCase() : 'BOOST RESULTS'}" beneath it in bold.
+
+RIGHT EDGE (bleeding off the frame, roughly the right 30%): a photoreal, professional-looking person cropped from the waist up, arms confidently crossed, warm smile, direct eye contact, modern business attire. Generic stock-photo style, not a specific real named individual. Beside them, a small clean device mockup (laptop or phone screen) showing a generic modern website/app preview — no readable body text, just abstract UI blocks.
+
+BOTTOM STRIP: a thin horizontal row of 4-5 tiny trust icons with 1-2 word labels each (e.g. quality, speed, support, security — adapt to the niche), and a rounded CTA button reading "${d.cta || 'ORDER NOW'}" with a small cart or arrow icon, in the bottom-right corner.
+
+STYLE: busy but organized, premium sales-page energy, every element clearly separated with breathing room — not overlapping or cramped.
+DO NOT include: more than one person, distorted faces or hands, misspelled text, real brand logos other than the ones listed, money imagery beyond a simple trend arrow, screenshots with real readable text.`,
+    ],
   };
   const TONES = Object.keys(LAYOUTS);
 
@@ -1285,13 +1329,16 @@ Return ONLY valid JSON:
   "line2": "SECOND BOLD WORD (1 word, ALL CAPS, the standout highlight — e.g. PRO, EXPERT, BOT, SERVICES — bigger than line1)",
   "subtitle": "3-5 short related keywords separated by a bullet, relevant to this exact gig",
   "logos": ["Name1", "Name2", "Name3", "Name4", "Name5", "Name6"],
-  "tone": "one of: bold, corporate, playful, elegant, minimal — whichever best fits how buyers in this niche think and shop"
+  "features": ["Short benefit 1", "Short benefit 2", "... up to 8, only used if tone is presenter"],
+  "cta": "2-3 word call to action, e.g. ORDER NOW, GET STARTED, BOOK NOW",
+  "tone": "one of: bold, corporate, playful, elegant, minimal, presenter — whichever best fits how buyers in this niche think and shop"
 }
 Rules:
 - line1 and line2 together form the poster's main title — short, punchy, together read like a service name.
 - line2 must be a high-impact power word that maximizes click-through when a buyer scans small search thumbnails — e.g. PRO, EXPERT, MASTER, NINJA, WIZARD, GURU, DONE-FOR-YOU, ON-DEMAND. Pick whichever fits the niche's tone best.
 - logos: real, well-known software/tool/platform names strongly associated with this niche (e.g. for a Python gig: Python, Django, Flask, PostgreSQL, Docker, AWS). If the niche has no well-known brand tools, return short generic icon descriptions instead (e.g. "gear icon", "paintbrush icon", "camera icon"). Provide up to 6.
-- tone guide: "bold" = tech/trading/automation/high-energy services. "corporate" = business/consulting/professional B2B services. "playful" = social media/entertainment/casual creative services. "elegant" = luxury branding/high-end design/wedding/premium creative services. "minimal" = anything where the service itself is the whole story and needs zero decoration (e.g. pure copywriting, pure code, pure data work).
+- features: 6-8 short (2-4 word) distinct things included in this exact service, each different from the others and from line1/line2/subtitle. Only meaningfully used by the "presenter" tone's infographic layout, but always fill it in.
+- tone guide: "presenter" = the DEFAULT for most real service gigs (web/app/store design, marketing, consulting, coaching, business services, video/design work) — a professional human photo builds buyer trust and is what top-performing gigs in these categories actually use. "bold" = pure tech/trading/automation gigs where an abstract poster fits better than a person. "corporate" = B2B/consulting gigs that specifically want zero human photo. "playful" = social media/entertainment/casual creative services. "elegant" = luxury branding/high-end design/wedding/premium creative services. "minimal" = anything where the service itself is the whole story and needs zero decoration (pure copywriting, pure code, pure data work). When genuinely unsure, prefer "presenter" — it matches the most common high-converting pattern on the platform.
 JSON only, no markdown.`
     );
 
