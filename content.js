@@ -676,10 +676,18 @@ Reply with ONLY the text, no quotes.${marketContext(brief)}${HUMAN_VOICE}`,
       const brief = await researchMarket(kw, setStatus);
       setStatus?.('⟳ Writing tags…');
       const raw = await ask(`Keywords: ${kw}`,
-        `Generate exactly 5 Fiverr search tags. lowercase, 1-3 words each, letters and numbers only, no special chars.
+        `Generate exactly 5 Fiverr search tags for a gig about: ${kw}.
+Rules:
+- lowercase, letters/numbers/spaces only, no special characters.
+- Each tag MAX 20 characters total (Fiverr's hard limit per tag) — 2-3 short words, not 1.
+- Each tag should open a genuinely different search query than the others — vary the angle (tool, outcome, audience, technique) rather than 5 close variations of the same phrase.
+- Tags should extend the gig's search footprint beyond the obvious title phrase, not just restate it — think about how a buyer might search this differently than how a seller would title it.
 Return ONLY a comma-separated list. Example: algo trading, mt5 bot, python trading, expert advisor, automated trading${marketContext(brief)}`
       );
-      const tags = raw.split(',').map(t => t.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '')).filter(Boolean).slice(0, 5);
+      const tags = raw.split(',')
+        .map(t => t.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(0, 20).trim())
+        .filter(Boolean)
+        .slice(0, 5);
       for (const tag of tags) { await typeTag(tagEl, tag); await humanDelay(); }
       setMsg('Tags added!', 'success');
     });
