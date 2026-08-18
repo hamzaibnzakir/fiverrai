@@ -73,7 +73,12 @@ chrome.storage.sync.get([
 
   setProvider(s.provider || 'claude');
   if (s.model) document.getElementById('claudeModelSelect').value = s.model;
-  if (s.groqModel) document.getElementById('groqModelSelect').value = s.groqModel;
+  if (s.groqModel) {
+    const deprecated = { 'llama-3.3-70b-versatile': 'openai/gpt-oss-120b', 'llama-3.1-8b-instant': 'openai/gpt-oss-20b', 'qwen/qwen3-32b': 'openai/gpt-oss-120b', 'meta-llama/llama-4-scout-17b-16e-instruct': 'openai/gpt-oss-120b' };
+    const model = deprecated[s.groqModel] || s.groqModel;
+    document.getElementById('groqModelSelect').value = model;
+    if (deprecated[s.groqModel]) chrome.storage.sync.set({ groqModel: model }); // persist the fix so it sticks
+  }
 
   if (s.temperature !== undefined) {
     const t = Math.round(s.temperature * 10);

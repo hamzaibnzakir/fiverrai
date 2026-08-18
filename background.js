@@ -37,7 +37,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5';
-const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
@@ -57,11 +57,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// Groq deprecated llama-3.3-70b-versatile (announced June 17, 2026, shut off
+// mid-August 2026). Anyone who saved it before the deprecation would silently
+// keep hitting a dead model forever without this — migrate it once, in place.
+const DEPRECATED_GROQ_MODELS = {
+  'llama-3.3-70b-versatile': 'openai/gpt-oss-120b',
+  'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
+  'qwen/qwen3-32b': 'openai/gpt-oss-120b',
+  'meta-llama/llama-4-scout-17b-16e-instruct': 'openai/gpt-oss-120b',
+};
+
 function getSettings() {
   return new Promise(r => chrome.storage.sync.get(
     ['anthropicKeys', 'anthropicApiKey', 'groqKeys', 'groqApiKey',
      'provider', 'model', 'groqModel', 'temperature'],
-    r
+    async (stored) => {
+      const replacement = DEPRECATED_GROQ_MODELS[stored.groqModel];
+      if (replacement) {
+        stored.groqModel = replacement;
+        chrome.storage.sync.set({ groqModel: replacement }); // persist the fix, not just this call
+      }
+      r(stored);
+    }
   ));
 }
 
@@ -137,7 +154,7 @@ async function callClaude(opts, keys) {
 // Groq's OpenAI-compatible endpoint still accepts temperature normally —
 // no equivalent deprecation there, so this path is untouched.
 
-async function callGroqWithKey(apiKey, { prompt, systemPrompt, model, temperature }) {
+async function callGroqWithKey(apiKey, { prompt, systemPrompt, model, temperature, maxTokens }) {
   const res = await fetch(GROQ_URL, {
     method: 'POST',
     headers: {
@@ -147,7 +164,17 @@ async function callGroqWithKey(apiKey, { prompt, systemPrompt, model, temperatur
     body: JSON.stringify({
       model: model || DEFAULT_GROQ_MODEL,
       temperature: temperature ?? 0.7,
-      max_tokens: 8000,
+      // Groq's free-tier rate limiter counts prompt_tokens + max_tokens (the
+      // requested CEILING, not actual usage) against the TPM budget before
+      // the call even runs. The old hardcoded 8000 here was already at (or
+      // over, once any prompt was added) the entire 8000 TPM cap for
+      // openai/gpt-oss-120b on the free tier -- every single call was
+      // guaranteed to fail with a "Requested X > Limit 8000" error,
+      // regardless of prompt size. None of this extension's completions
+      // (the longest is the full JSON gig description, generously under
+      // 1000 tokens) need anywhere near that -- 2048 leaves comfortable
+      // headroom under 8000 for the prompt itself.
+      max_tokens: maxTokens || 2048,
       messages: [
         { role: 'system', content: systemPrompt || '' },
         { role: 'user', content: prompt },
@@ -189,6 +216,7 @@ async function handleAIRequest(payload) {
     systemPrompt: payload.systemPrompt,
     temperature, // used verbatim for Groq; converted to a text hint for Claude
     model: stored.model,
+    maxTokens: payload.maxTokens, // undefined falls through to each provider's own safe default
   };
 
   const order = provider === 'groq' ? ['groq', 'claude'] : ['claude', 'groq'];

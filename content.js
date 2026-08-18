@@ -14,8 +14,9 @@ const HUMAN_VOICE = `
 WRITE LIKE A REAL PERSON, NOT AN AI:
 - Use natural contractions (I'll, you're, it's, don't) and vary sentence length — mix short punchy lines with longer ones.
 - Never open two sentences the same way, and don't line every point up in the same rhythm.
-- Ban these AI-cliché words/phrases entirely: elevate, unleash, seamless, seamlessly, dive in, in today's fast-paced world, take it to the next level, unlock, robust, cutting-edge, game-changer, leverage, tailored solutions, top-notch, harness, embark, realm.
-- Be concrete and specific over vague and impressive — real tool names, real numbers, real outcomes beat adjectives.
+- Ban these AI-cliché words/phrases entirely: elevate, unleash, seamless, seamlessly, dive in, in today's fast-paced world, take it to the next level, unlock, robust, cutting-edge, game-changer, leverage, tailored solutions, top-notch, harness, embark, realm, professional, amazing, high-quality, world-class, innovative, passionate, dedicated.
+- Be concrete and specific over vague and impressive — real tool names, real numbers, real outcomes beat adjectives. If a sentence would work with the word "professional" or "amazing" deleted and no replacement, it's filler — cut it or replace it with something that actually describes the deliverable.
+- CLARITY BEATS CLEVERNESS: a buyer skims this in seconds. If a phrase needs a second read to understand what they'd get, rewrite it plainly. Varying rhythm and word choice is good; being vague, cute, or ambiguous to sound "different" is not — every sentence should be instantly understandable on first read even as it avoids sounding templated.
 - A little natural imperfection (a casual aside, a direct "here's the deal") reads more human than flawless corporate polish.`;
 
 chrome.storage.local.get(['faiKeywords', 'faiEnabled', 'faiResearch'], (data) => {
@@ -641,18 +642,21 @@ function injectPage1() {
       const brief = await researchMarket(kw, setStatus);
       setStatus?.('⟳ Writing title…');
       const angle = pick([
-        'Start with a strong action verb (build, develop, automate, create, design) followed by the tool/platform, then the outcome.',
-        'Lead with the specific tool or platform name first, then say what you do with it.',
-        'Lead with the outcome/result the buyer gets, then mention how you deliver it.',
-        'Start with a strong verb, but pick a less obvious one than build/develop/create — e.g. engineer, architect, launch, deploy, optimize.',
-        'Frame it around solving a specific buyer problem, then name the tool used to solve it.',
+        'After the front-loaded keyword: add a strong, specific outcome the buyer gets.',
+        'After the front-loaded keyword: name the exact tool/platform/method used.',
+        'After the front-loaded keyword: specify who it\'s for (a specific buyer type), if that sharpens it.',
+        'After the front-loaded keyword: add one concrete scope detail (a format, a count, a deliverable type) instead of a vague adjective.',
+        'After the front-loaded keyword: add a specific differentiator — what makes this approach different from the generic version of this service.',
       ]);
       const text = await ask(`Keywords: ${kw}`,
         `Write a short, SEO-optimized Fiverr gig title. The field already shows "I will" — write ONLY what comes after "I will". Do NOT include "I will".
-Max 60 chars. Naturally include 1-2 of these keywords: ${kw}.
+Max 60 chars.
+
+HARD RULE (Fiverr's single highest-weight title ranking signal, this is non-negotiable): the exact primary keyword/service from "${kw}" must be the very first thing after "I will" — within the first 3-4 words. Do not open with a hook, outcome, or adjective before it.
+Correct pattern: "[primary keyword] + [specific detail from the angle below]" — e.g. "design a modern Shopify store with a custom theme," not "boost your sales with a custom Shopify store" (keyword buried).
 ${angle}
-Be specific and punchy: service + tool/platform + outcome. No filler words.
-Avoid defaulting to the most generic, expected phrasing — this must read differently from a typical templated gig title.
+Prefer a concrete, specific detail over a vague impressive-sounding adjective — a real deliverable, tool, or scope detail beats a word like "amazing" or "professional" every time.
+Avoid defaulting to the most generic, expected phrasing after the keyword — this must read differently from a typical templated gig title.
 Reply with ONLY the text, no quotes.${marketContext(brief)}${HUMAN_VOICE}`,
         1.0
       );
@@ -723,7 +727,7 @@ function injectPage2() {
 Rules:
 - Top-level keys must be exactly "basic", "standard", "premium" (lowercase) — nothing else.
 - Names: creative tier-appropriate names (NOT Basic/Standard/Premium). E.g. Starter, Growth, Pro, Elite, Essential, Advanced, Ultimate. Each must be DIFFERENT.
-- Description: use the format 'This [Name] package includes [what's in it].' — 75-90 characters. Example: 'This Starter package includes a logo design with 2 revisions and the source file.' Adapt to the gig niche and tier scope.
+- Description: 75-90 characters, one sentence. Lead with the concrete deliverable, not the package name — e.g. "A custom logo design with 2 revisions and the source file" beats "This Starter package includes a logo design..." Name real nouns (file formats, quantities, deliverable types) specific to this tier's scope — no filler adjectives.
 ${pricingRule}
 - Escalate scope between tiers: basic = minimal, standard = full, premium = everything + extras.${marketContext(brief)}${HUMAN_VOICE}
 JSON only.`;
@@ -822,29 +826,38 @@ function injectPage3() {
       const whyStyle = pick([
         'Start each with action words or adjectives. E.g. "Clean, scalable, well-documented code".',
         'Start each with a number or concrete specific where possible. E.g. "3+ years building production Chrome extensions".',
-        'Phrase each as a short benefit to the buyer rather than a trait about you. E.g. "You get working code, not just a demo".',
+        'Phrase each as a short benefit TO the buyer, addressed as "you" — what they get or avoid, not a trait about you. E.g. "You get working code, not just a demo" or "No back-and-forth over vague requirements".',
       ]);
 
-      const data = await ask(`Keywords: ${kw}`,
-        `Write a Fiverr gig description for: ${kw}. Return ONLY valid JSON with these exact keys:
+      const descPrompt = `Write a Fiverr gig description for: ${kw}. Return ONLY valid JSON with these exact keys:
 {
   "hook": "...",
   "intro": "...",
   "develop": ["...", "...", "...", "...", "...", "..."],
   "why": ["...", "...", "...", "..."],
+  "scope": "...",
   "closing": "...",
   "cta": "..."
 }
 
-FIVERR PLATFORM RULES (this field has a hard 1,200-character cap and gets flagged/truncated past it — the whole description across every field below must total roughly 900-1050 visible characters, comfortably under the cap, not up against it):
-- hook: ${hookStyle} 1 sentence, max 110 chars. Never start with "I" — open on the buyer's problem or the outcome, not on yourself.
-- intro: 1 sentence framed around the BUYER's situation and what they get — who this is for and what problem it solves. Do not lead with your own bio; if experience is mentioned at all, it's a trailing trust cue, not the subject of the sentence. Max 140 chars.
-- develop: exactly 6 specific things you can build/deliver for this niche (not 8 — keep the section scannable and inside the char budget). Short phrases, 4-8 words each. Diverse and specific — vary the wording between bullets (different verbs, different angles on the service), don't just restate "${kw}" six times with different endings.
-- why: exactly 4 short selling points (not 6). 4-7 words each. ${whyStyle}
-- closing: 1 sentence wrapping up the offer, inviting them to order. Max 120 chars.
-- cta: one direct action sentence, 50-70 chars.
+CONVERSION COPYWRITING PRINCIPLES (apply these throughout, not just as a checklist item):
+- Specificity beats vague praise. A concrete noun (a file format, a named technique, a specific deliverable) always beats a generic adjective. Never pad a sentence with a word that could be deleted with no loss of meaning.
+- Clarity beats cleverness. A buyer skims this in seconds — every line should be understood on first read. Vary rhythm and word choice for freshness, never at the cost of instant clarity.
+- Talk to the buyer as "you," not about yourself as "I," wherever the sentence allows it without feeling forced — benefit-to-them beats trait-about-you.
+- No fake urgency or scarcity ("limited spots," "today only," etc.) — this is an evergreen gig listing, not a flash sale, and Fiverr's algorithm penalizes over-optimized manipulation tactics anyway.
+
+FIVERR PLATFORM RULES (this field has a hard 1,200-character cap — use the space, don't leave keyword-relevance signal on the table, but the whole description across every field below must total roughly 1100-1180 visible characters, using nearly the full allowance without literally hitting 1200 and risking truncation):
+- hook: ${hookStyle} 1-2 sentences, max 150 chars. Never start with "I" — open on a SPECIFIC version of the buyer's problem or outcome (name the actual pain/result), not a generic one that could apply to any gig in this category.
+- intro: 1-2 sentences framed around the BUYER's situation and what they get — who this is for and what problem it solves. Do not lead with your own bio; if experience is mentioned at all, it's a trailing trust cue, not the subject of the sentence. Max 180 chars.
+- develop: exactly 6 specific things you can build/deliver for this niche. Full short phrases, 6-10 words each — each one names a CONCRETE deliverable, format, or capability in real detail, not a clipped 3-word fragment. Diverse and specific — vary the wording between bullets (different verbs, different angles on the service), don't just restate "${kw}" six times with different endings.
+- why: exactly 4 selling points, 6-9 words each. ${whyStyle}
+- scope: ONE sentence stating something reasonable that's NOT included at this tier or requires a custom quote (e.g. "Rush delivery under 24h and multi-language versions are available as add-ons.") — this sets expectations up front and reduces disputes/scope-creep messages later. Max 120 chars. Keep it matter-of-fact, not apologetic.
+- closing: 1-2 sentences wrapping up the offer, inviting them to order, reinforcing the core value. Max 160 chars.
+- cta: one direct action sentence, 60-90 chars.
 - KEYWORD REPETITION CAP (this is the single most common reason Fiverr flags/rejects a description): the exact primary keyword phrase from "${kw}" may appear AT MOST 2 times in the ENTIRE output, combined across all fields — ideally once in the hook or intro, and at most once more anywhere else. Every other mention of the service must use a synonym, a related term, a pronoun ("it"/"this"), or just describe the deliverable without repeating the phrase. If you notice yourself about to use the exact phrase a 3rd time, rewrite that sentence around a synonym instead.
+- GENERAL WORD REPETITION CAP: this applies to EVERY meaningful word, not just the primary keyword — no single content word (a noun, verb, or adjective specific to the service — not common connector words like "the/a/and/your/with") may appear more than 3 times across the ENTIRE output. If you catch yourself reaching for the same word a 4th time, use a synonym instead. Reread your own draft before finalizing and swap out any word you've used 4+ times.
 - The primary keyword/service from "${kw}" must appear naturally within the hook or intro (Fiverr indexes description keywords, and early placement carries more weight) — but never stuff or repeat keywords artificially; write for the buyer first.
+- Also naturally work in 3-4 related/secondary terms (synonyms or adjacent tools/techniques for this niche) across the body — this broadens keyword relevance without repeating the primary phrase.
 - Avoid the most predictable, template-sounding phrasing — this should read differently each time it's generated, not like the same gig with nouns swapped.
 
 FIVERR COMPLIANCE — never include any of the following anywhere in the output, no exceptions:
@@ -854,19 +867,49 @@ FIVERR COMPLIANCE — never include any of the following anywhere in the output,
 - Claims of official partnership/certification with a named brand or platform unless it's simply naming a tool you use (e.g. "I build with Shopify" is fine; "official Shopify partner" is not, unless literally true and stated as such elsewhere).
 - Anything that could read as copied from another seller's listing — this must be original phrasing every time.
 
-Output JSON only, no markdown, no char counts.${marketContext(brief)}${HUMAN_VOICE}`,
-        0.95
-      );
+Output JSON only, no markdown, no char counts.${marketContext(brief)}${HUMAN_VOICE}`;
 
-      let desc;
-      try { desc = JSON.parse(data.match(/\{[\s\S]*\}/)?.[0]); }
-      catch { throw new Error('Could not parse description — try again'); }
+      // Word-repetition checker — scans the assembled draft for any
+      // non-stopword used more than 3 times, so this is actually enforced
+      // in code rather than just hoped for in the prompt.
+      const DESC_STOPWORDS = new Set(['the','a','an','and','or','for','with','to','of','in','on','i','ill','you','your','youre','is','are','will','get','my','me','it','this','that','from','by','at','as','be','have','has','can','not','no','so','if','all','up','out','into','need','want','one','more','than','then','also','just','were','was','over','without','who','what','when','where','why','how','our','their']);
+      function findOverusedWords(text, maxCount = 3) {
+        const freq = {};
+        for (const w of String(text).toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/)) {
+          const clean = w.replace(/'/g, '');
+          if (clean.length < 4 || DESC_STOPWORDS.has(clean)) continue;
+          freq[clean] = (freq[clean] || 0) + 1;
+        }
+        return Object.entries(freq).filter(([, c]) => c > maxCount).map(([w]) => w);
+      }
+
+      async function generateDescription(extra = '') {
+        const data = await ask(`Keywords: ${kw}`, descPrompt + extra, 0.95);
+        let d;
+        try { d = JSON.parse(data.match(/\{[\s\S]*\}/)?.[0]); } catch { return null; }
+        if (!d?.hook || !Array.isArray(d.develop)) return null;
+        return d;
+      }
+
+      let desc = await generateDescription();
+      let combined = desc ? [desc.hook, desc.intro, ...(desc.develop || []), ...(desc.why || []), desc.scope, desc.closing, desc.cta].filter(Boolean).join(' ') : '';
+      let overused = desc ? findOverusedWords(combined) : [];
+
+      if (!desc || overused.length) {
+        setMsg(overused.length ? 'Fixing repeated words…' : 'Retrying description…', 'info');
+        const warning = overused.length
+          ? `\n\nREVISION NEEDED: your previous draft repeated these words too many times (max 3 uses allowed each): ${overused.join(', ')}. Rewrite the full description using different vocabulary for those specific words — synonyms or rephrased sentences — while keeping the same structure and quality.`
+          : '';
+        const retry = await generateDescription(warning);
+        if (retry) desc = retry;
+      }
       if (!desc?.hook || !Array.isArray(desc.develop)) throw new Error('Bad description format — try again');
       const clean = s => String(s).replace(/\s*\(\d+.*?\)\s*/g, '').trim();
       desc.hook    = clean(desc.hook);
       desc.intro   = clean(desc.intro || '');
       desc.develop = (desc.develop || []).map(b => clean(b)).filter(Boolean).slice(0, 6);
       desc.why     = (desc.why || []).map(b => clean(b)).filter(Boolean).slice(0, 4);
+      desc.scope   = clean(desc.scope || '');
       desc.closing = clean(desc.closing || '');
       desc.cta     = clean(desc.cta || '');
 
@@ -889,6 +932,7 @@ Output JSON only, no markdown, no char counts.${marketContext(brief)}${HUMAN_VOI
         + `<p>${esc(desc.intro)}</p><p><br></p>`
         + `<p><strong>I can develop:</strong></p><ul>${devHtml}</ul><p><br></p>`
         + `<p><strong>Why choose me?</strong></p><ul>${whyHtml}</ul><p><br></p>`
+        + (desc.scope ? `<p>${esc(desc.scope)}</p><p><br></p>` : '')
         + `<p>${esc(desc.closing)}</p><p><br></p>`
         + `<p>${esc(desc.cta)}</p>`;
 
@@ -1121,7 +1165,7 @@ function injectPage5() {
   const LAYOUTS = {
     bold: [
       // stacked two-line massive title, centered, icons scattered corners/mid-sides
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio).
 One unified full image. NO split panels. NO divider lines. NO cards. NO feature lists.
 Bold typography center. Relevant tool/platform icons surrounding it.
 
@@ -1141,7 +1185,7 @@ STYLE: minimal dark tech poster, extreme negative space, clean and premium.
 DO NOT include: split lines, divider panels, feature cards, stat badges, bottom logo rows, particle effects, human figures, charts, money imagery, website URL, hexagon badges, clutter of any kind.`,
 
       // single dominant word large, second word smaller below it, icons in a loose bottom arc
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, no panels, no borders, no grid lines.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, no panels, no borders, no grid lines.
 
 BACKGROUND: solid ${bg[1]} (${bg[0]}), completely flat and clean.
 
@@ -1156,7 +1200,7 @@ STYLE: bold poster energy, like a movie title card. Premium, confident, minimal.
 DO NOT include: borders, panels, grids, human figures, charts, money imagery, screenshots, watermarks, extra text beyond what is specified.`,
 
       // diagonal split — two color bands cutting across, title straddling the seam
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, bold diagonal composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, bold diagonal composition.
 
 BACKGROUND: split diagonally (roughly 40/60) from top-left to bottom-right into two bands — one ${bg[1]} (${bg[0]}), the other a slightly darker variant of the same color. The diagonal seam is a clean hard edge, no gradient blur.
 
@@ -1173,7 +1217,7 @@ DO NOT include: more than one diagonal seam, gradients, human figures, charts, m
     ],
     corporate: [
       // title in a rounded badge/pill, slightly tilted, icons only in the four corners
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, no split panels, no dividers, no feature cards.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, no split panels, no dividers, no feature cards.
 
 BACKGROUND: ${bg[1]} (${bg[0]}) with an extremely subtle diagonal gradient toward a slightly darker shade of the same color — barely visible, still reads as a flat unified background.
 
@@ -1189,7 +1233,7 @@ STYLE: confident, modern, slightly dynamic due to the tilt. Premium poster energ
 DO NOT include: extra badges, stat lines, charts, human figures, money imagery, screenshots, clutter of any kind.`,
 
       // left-aligned asymmetric title, icons in a vertical column on the right
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, editorial poster layout, asymmetric composition — NOT centered.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, editorial poster layout, asymmetric composition — NOT centered.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean, no textures or gradients.
 
@@ -1205,7 +1249,7 @@ STYLE: modern editorial tech poster, strong asymmetry, lots of negative space ar
 DO NOT include: dividing lines between the two sections, borders, panels, human figures, charts, money imagery, clutter of any kind.`,
 
       // honeycomb/grid of icons framing a small centered title
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, structured grid composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, structured grid composition.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), clean, no textures.
 
@@ -1222,7 +1266,7 @@ DO NOT include: connecting lines between icons, charts, human figures, money ima
     ],
     playful: [
       // bouncy scattered title with tilted word chunks, icons as playful accents
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, energetic and fun composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, energetic and fun composition.
 
 BACKGROUND: solid ${bg[1]} (${bg[0]}), flat and clean, with a few small soft-glow accent dots in ${accent[1]} scattered subtly in the negative space (never near the text).
 
@@ -1238,7 +1282,7 @@ STYLE: fun, energetic, approachable — confident but not corporate.
 DO NOT include: excessive tilt that hurts legibility, human figures, charts, money imagery, clutter of any kind.`,
 
       // speech-bubble/sticker-burst title, icons as a playful ring
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, playful sticker-poster composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, playful sticker-poster composition.
 
 BACKGROUND: solid ${bg[1]} (${bg[0]}), flat and clean.
 
@@ -1254,7 +1298,7 @@ STYLE: bubbly, high-energy, social-media-native — think sticker pack or app-st
 DO NOT include: harsh edges, human figures, charts, money imagery, clutter of any kind.`,
 
       // vertical bounce — title stacked at an angle down the left, icons cascading down the right
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, playful asymmetric composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, playful asymmetric composition.
 
 BACKGROUND: solid ${bg[1]} (${bg[0]}), flat, with a couple of soft blurred color-accent circles floating in empty corners (never behind the text).
 
@@ -1271,7 +1315,7 @@ DO NOT include: rigid grids, human figures, charts, money imagery, clutter of an
     ],
     elegant: [
       // slim serif/refined title, generous whitespace, icons minimal and small
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, refined and minimal composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, refined and minimal composition.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean, generous negative space — at least half the image should be empty space.
 
@@ -1287,7 +1331,7 @@ STYLE: refined, premium, boutique — like a high-end studio's portfolio cover, 
 DO NOT include: bold ultra-heavy fonts, glows, clutter, human figures, charts, money imagery.`,
 
       // centered frame — thin rectangular border, title and subtitle nested inside, like a gallery label
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, gallery-label composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, gallery-label composition.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean.
 
@@ -1303,7 +1347,7 @@ STYLE: quiet luxury, museum-label restraint, boutique branding — nothing shout
 DO NOT include: heavy fonts, glows, gradients, clutter, human figures, charts, money imagery.`,
 
       // left-third refined column — vertical accent rule, title right-aligned to it
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, editorial luxury composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, editorial luxury composition.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean, no textures.
 
@@ -1320,7 +1364,7 @@ DO NOT include: bold heavy fonts, glows, more than 3 icons, clutter, human figur
     ],
     minimal: [
       // one word, enormous, nothing else
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, extreme minimalism.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, extreme minimalism.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), absolutely nothing else on it except the text below.
 
@@ -1334,7 +1378,7 @@ STYLE: brutally simple, huge confidence in the typography alone, no ornamentatio
 DO NOT include: glows, gradients, more than 2 icons, patterns, human figures, charts, money imagery, clutter of any kind.`,
 
       // off-center single line, huge left margin, nothing else
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, radically minimal off-center composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, radically minimal off-center composition.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely empty otherwise.
 
@@ -1351,7 +1395,7 @@ STYLE: architectural, confident through emptiness, like a minimalist album cover
 DO NOT include: centering the text, glows, gradients, patterns, human figures, charts, money imagery, clutter of any kind.`,
 
       // small centered wordmark inside a thin circle outline, nothing else
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. One unified image, badge-minimal composition.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). One unified image, badge-minimal composition.
 
 BACKGROUND: flat ${bg[1]} (${bg[0]}), completely clean.
 
@@ -1368,7 +1412,7 @@ DO NOT include: filling the circle, glows, gradients, clutter, human figures, ch
     ],
     presenter: [
       // Simple presenter: highlighted pretitle + huge headline + tool badges + CTA button, person bleeding off the right edge
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. Professional marketing-banner composition with a real presenter photo — this is the single most important element, do not omit it.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). Professional marketing-banner composition with a real presenter photo — this is the single most important element, do not omit it.
 
 BACKGROUND: ${bg[1]} (${bg[0]}) filling the entire image, with soft organic glow/blob shapes and a few thin scattered geometric accents (small circles, dashes) in the empty background areas only — never behind or near text.
 
@@ -1377,17 +1421,17 @@ RIGHT SIDE (roughly the right 35-40% of the image, bleeding off the right edge):
 LEFT SIDE (roughly the left 60-65%), everything left-aligned:
 - Small pre-title inside a solid rounded highlight box (bright contrasting color, e.g. yellow or white): "${d.line1}"
 - Directly beneath, the massive main headline in ultra-bold sans-serif: "${d.line2}" in ${accent[1]} (${accent[0]}) or white, dominating the left side
-- Beneath the headline, a row of 3-4 small white circular badges, each containing one recognizable tool/platform icon:
+- Beneath the headline, a row of 3-4 small white circular badges, each containing one generic icon representing a tool/concept from the list below (not a real brand logo):
 ${logoLines}
 - Beneath the badges, a rounded pill-shaped button graphic with a small arrow icon, containing the text: "${d.cta || 'ORDER NOW'}"
 
 That is all the text on the image.
 
 STYLE: polished, trustworthy, high-converting marketing banner — like a professional service ad, not an abstract poster.
-DO NOT include: more than one person, distorted faces, extra limbs, fully covering the person with text, charts, screenshots, money imagery, misspelled text.`,
+DO NOT include: more than one person, distorted faces, extra limbs, fully covering the person with text, charts, screenshots, money imagery, misspelled text, real brand logos or trademarks.`,
 
       // Infographic presenter: adds a benefits checklist + trust seal + device mockup, matching the fuller reference example
-      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1536x1024 pixels. Dense, professional infographic-style marketing banner with a real presenter photo — the person and the checklist are both essential, do not omit either.
+      (d, bg, accent, logoLines) => `Create a premium Fiverr gig thumbnail, 1280x769 pixels, 72 DPI (Fiverr's exact required gig image size — do not use any other dimensions or aspect ratio). Dense, professional infographic-style marketing banner with a real presenter photo — the person and the checklist are both essential, do not omit either.
 
 BACKGROUND: ${bg[1]} (${bg[0]}), rich gradient with soft glow accents, subtle fine dot-grid texture in the darkest corner only.
 
@@ -1404,7 +1448,7 @@ RIGHT EDGE (bleeding off the frame, roughly the right 30%): a photoreal, profess
 BOTTOM STRIP: a thin horizontal row of 4-5 tiny trust icons with 1-2 word labels each (e.g. quality, speed, support, security — adapt to the niche), and a rounded CTA button reading "${d.cta || 'ORDER NOW'}" with a small cart or arrow icon, in the bottom-right corner.
 
 STYLE: busy but organized, premium sales-page energy, every element clearly separated with breathing room — not overlapping or cramped.
-DO NOT include: more than one person, distorted faces or hands, misspelled text, real brand logos other than the ones listed, money imagery beyond a simple trend arrow, screenshots with real readable text.`,
+DO NOT include: more than one person, distorted faces or hands, misspelled text, real brand logos or trademarks, money imagery beyond a simple trend arrow, screenshots with real readable text.`,
     ],
   };
   const TONES = Object.keys(LAYOUTS);
@@ -1420,7 +1464,7 @@ Return ONLY valid JSON:
   "line1": "FIRST BOLD WORD (1-2 words, ALL CAPS, the general category — e.g. PYTHON, WEB DESIGN, VIDEO EDITING)",
   "line2": "SECOND BOLD WORD (1 word, ALL CAPS, the standout highlight — e.g. PRO, EXPERT, BOT, SERVICES — bigger than line1)",
   "subtitle": "3-5 short related keywords separated by a bullet, relevant to this exact gig",
-  "logos": ["Name1", "Name2", "Name3", "Name4", "Name5", "Name6"],
+  "icons": ["generic icon description 1", "generic icon description 2", "... up to 6"],
   "features": ["Short benefit 1", "Short benefit 2", "... up to 8, only used if tone is presenter"],
   "cta": "2-3 word call to action, e.g. ORDER NOW, GET STARTED, BOOK NOW",
   "tone": "one of: bold, corporate, playful, elegant, minimal, presenter — whichever best fits how buyers in this niche think and shop"
@@ -1428,7 +1472,7 @@ Return ONLY valid JSON:
 Rules:
 - line1 and line2 together form the poster's main title — short, punchy, together read like a service name.
 - line2 must be a high-impact power word that maximizes click-through when a buyer scans small search thumbnails — e.g. PRO, EXPERT, MASTER, NINJA, WIZARD, GURU, DONE-FOR-YOU, ON-DEMAND. Pick whichever fits the niche's tone best.
-- logos: real, well-known software/tool/platform names strongly associated with this niche (e.g. for a Python gig: Python, Django, Flask, PostgreSQL, Docker, AWS). If the niche has no well-known brand tools, return short generic icon descriptions instead (e.g. "gear icon", "paintbrush icon", "camera icon"). Provide up to 6.
+- icons: 6 short GENERIC icon descriptions that visually represent tools/concepts associated with this niche — describe the shape/concept only, e.g. for a Python gig: "coiled snake icon", "terminal window icon", "gear/cog icon", "cloud icon", "database cylinder icon", "shipping box icon". Do NOT name a specific real brand/product to be rendered as its actual logo (never "the Shopify logo", "the Python logo", etc.) — reproducing a real trademark on a gig thumbnail without authorization risks the gig being flagged, and most image tools won't render brand marks accurately anyway. If you want to reference a real tool, describe a generic icon that evokes it conceptually instead of naming its logo.
 - features: 6-8 short (2-4 word) distinct things included in this exact service, each different from the others and from line1/line2/subtitle. Only meaningfully used by the "presenter" tone's infographic layout, but always fill it in.
 - tone guide: "presenter" = the DEFAULT for most real service gigs (web/app/store design, marketing, consulting, coaching, business services, video/design work) — a professional human photo builds buyer trust and is what top-performing gigs in these categories actually use. "bold" = pure tech/trading/automation gigs where an abstract poster fits better than a person. "corporate" = B2B/consulting gigs that specifically want zero human photo. "playful" = social media/entertainment/casual creative services. "elegant" = luxury branding/high-end design/wedding/premium creative services. "minimal" = anything where the service itself is the whole story and needs zero decoration (pure copywriting, pure code, pure data work). When genuinely unsure, prefer "presenter" — it matches the most common high-converting pattern on the platform.
 JSON only, no markdown.`
@@ -1441,8 +1485,8 @@ JSON only, no markdown.`
     d.line2 = d.line2.toUpperCase();
 
     const positions = ['top-left area', 'top-right area', 'bottom-left area', 'bottom-right area', 'far left middle', 'far right middle'];
-    const logoLines = (d.logos || []).slice(0, 6)
-      .map((l, i) => `${positions[i] || 'scattered'}: ${l} logo/icon`)
+    const logoLines = (d.icons || []).slice(0, 6)
+      .map((l, i) => `${positions[i] || 'scattered'}: ${l}`)
       .join('\n');
 
     const tone = TONES.includes(d.tone) ? d.tone : pick(TONES);
@@ -1450,7 +1494,7 @@ JSON only, no markdown.`
     const bg = pick(palettesForTone.length ? palettesForTone : PALETTES);
     const accent = [bg[2], bg[3]];
     const buildPrompt = pick(LAYOUTS[tone]);
-    const ctrNote = `\n\nOPTIMIZE FOR CLICK-THROUGH: this image will appear tiny in Fiverr search results, competing against dozens of other thumbnails. Maximum contrast between text and background so the title is instantly legible even at thumbnail size. Bold, confident, scroll-stopping — not subtle or muted.`;
+    const ctrNote = `\n\nOPTIMIZE FOR CLICK-THROUGH: in Fiverr search results this image displays as small as roughly 550x370 pixels, competing against dozens of other thumbnails. Maximum contrast between text and background so the title is instantly legible even at that tiny size. Bold, confident, scroll-stopping — not subtle or muted. Keep all text and icons at least 70px away from the left and right edges (Fiverr's mobile view crops the outer edges inward, and anything closer to the edge risks being cut off).`;
     return buildPrompt(d, bg, accent, logoLines) + ctrNote;
   }
 

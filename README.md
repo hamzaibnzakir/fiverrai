@@ -1,13 +1,27 @@
 # Brainbox Gig AI
 
-A Chrome extension, owned and operated by **Brainbox Ecom Lab**, that fills out your Fiverr gig pages and seller profile using **Claude** (Anthropic) or free **Groq** models with human-like typing — grounded in **live Fiverr market research** instead of guesswork.
+A browser extension — **works in both Chrome and Firefox from the same build** — owned and operated by **Brainbox Ecom Lab**, that fills out your Fiverr gig pages and seller profile using **Claude** (Anthropic) or free **Groq** models with human-like typing — grounded in **live Fiverr market research** instead of guesswork.
 
 Originally forked from an open-source Groq-only autofill tool and substantially rebuilt: multi-provider AI backend, more human-sounding output, live pricing/ranking research, and a text-only (no third-party image API) thumbnail-prompt workflow.
 
 ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
+![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-green?style=for-the-badge)
 ![Claude](https://img.shields.io/badge/Claude-Sonnet%205-D97757?style=for-the-badge)
 ![Groq](https://img.shields.io/badge/Groq-Free%20Tier-orange?style=for-the-badge)
+
+---
+
+## Is this safe for my Fiverr account?
+
+Confirmed by Brainbox Ecom Lab, plainly:
+
+- **It only fills in gig/profile fields on pages you're already viewing** — title, tags, description, packages, FAQs, bio. It types into the same fields you'd type into yourself, under your own logged-in session. It never navigates anywhere, never submits/publishes anything on its own, and never touches orders, messages, payments, or account settings — you always review and click Save/Publish yourself.
+- **There is no Brainbox-owned server.** This extension has no backend of its own — nothing "phones home" to Brainbox or anyone else. Check `manifest.json` yourself: the only hosts it's allowed to talk to are `fiverr.com` (to fill in fields and pull live market data, same-origin, under your session) and the two AI providers you personally configure with your own API keys (`api.anthropic.com` / `api.groq.com`, wherever the actual writing gets generated). That's it — no analytics, no telemetry, no third-party logging service, anywhere in the code.
+- **Your API keys stay on your machine** — stored only in your browser's own `chrome.storage`, never sent anywhere except directly to Anthropic/Groq to generate text.
+- The one Fiverr-side action beyond field-filling is the live market research step, which is a single same-origin fetch to Fiverr's own search results for your niche — functionally identical to you typing a search and hitting enter once. Nothing is scraped in bulk, nothing runs in a loop.
+
+See [Security / No API Leaks](#security--no-api-leaks) further down for the full technical breakdown.
 
 ---
 
@@ -61,11 +75,21 @@ As of Claude Opus 4.7+/4.8 and Claude Sonnet 5, Anthropic's Messages API hard-re
 
 ## Installation
 
+This is a single build that works in both Chrome and Firefox — no separate downloads.
+
+### Chrome
 1. Download/unzip this folder
 2. Open Chrome → `chrome://extensions`
 3. Enable **Developer mode** (top-right toggle)
 4. Click **Load unpacked** → select the `brainbox-gig-ai` folder
 5. The ✦ icon appears in your Chrome toolbar
+
+### Firefox
+1. Open Firefox → `about:debugging` → **This Firefox** (left sidebar)
+2. Click **Load Temporary Add-on…** → select `manifest.json` inside this folder
+3. The ✦ icon appears immediately
+
+**Firefox persistence note:** this temporary-load method only lasts until Firefox restarts — Firefox requires either a free Mozilla signature (submit the zipped folder at https://addons.mozilla.org/developers/ under "On your own" unlisted distribution, install the signed `.xpi` you get back) or running Firefox Developer Edition/Nightly with `xpinstall.signatures.required` set to `false` in `about:config` for it to survive a restart. Chrome has no equivalent restriction.
 
 ---
 
