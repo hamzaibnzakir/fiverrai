@@ -969,8 +969,7 @@ Output JSON only, no markdown, no char counts.${marketContext(brief)}${HUMAN_VOI
         'Sound like an experienced expert who has answered this a hundred times, calm and matter-of-fact.',
       ]);
 
-      const raw = await ask(`Keywords: ${kw}`,
-        `Write exactly 5 FAQs a real buyer would ask about a Fiverr gig for: ${kw}
+      const faqPrompt = `Write exactly 5 FAQs a real buyer would ask about a Fiverr gig for: ${kw}
 Think like a buyer with a specific concern — not a generic template writer.
 Cover these 5 real buyer concerns, in this order:
 1. ${concerns[0]}
@@ -995,12 +994,22 @@ RULES:
 - BAD answer: "I will deliver high-quality results in a timely manner." GOOD answer: "Most projects take 3-5 days. I'll send you the full source code, manifest, and a setup guide."
 - ${voiceStyle}
 - Avoid reusing the most predictable phrasing — vary sentence structure and word choice so this doesn't read like a template filled in with different nouns.${HUMAN_VOICE}
-JSON only, no markdown.`,
-        0.95
-      );
-      let faqs;
-      try { faqs = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0]); }
-      catch { throw new Error('Could not parse FAQs — try again'); }
+JSON only, no markdown.`;
+
+      async function generateFaqs() {
+        const raw = await ask(`Keywords: ${kw}`, faqPrompt, 0.95);
+        try {
+          const arr = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0]);
+          return Array.isArray(arr) && arr.length ? arr : null;
+        } catch { return null; }
+      }
+
+      let faqs = await generateFaqs();
+      if (!faqs) {
+        setMsg('Retrying FAQ generation…', 'info');
+        faqs = await generateFaqs();
+      }
+      if (!faqs) throw new Error('Could not parse FAQs — try again');
 
       function findAddFaqBtn() {
         return [...document.querySelectorAll('a, button, span')]

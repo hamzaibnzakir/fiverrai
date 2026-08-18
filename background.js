@@ -154,7 +154,25 @@ async function callClaude(opts, keys) {
 // Groq's OpenAI-compatible endpoint still accepts temperature normally —
 // no equivalent deprecation there, so this path is untouched.
 
+// GPT-OSS and Qwen3 models on Groq are "reasoning" models — by default they
+// spend a chunk of max_tokens on hidden chain-of-thought BEFORE writing the
+// actual answer (openai/gpt-oss-* defaults to reasoning_effort: "medium").
+// For short single-line fields (title, tags) that barely matters, but for
+// longer structured JSON (packages, FAQs) it was eating enough of the
+// budget to truncate the JSON before its closing brace/bracket, causing
+// "invalid package data" / "could not parse FAQs" even though the request
+// itself succeeded. None of this extension's tasks need heavy reasoning —
+// it's copywriting, not multi-step logic — so reasoning is dialed down
+// (not fully removed, since Groq doesn't guarantee 'none' is honored on
+// gpt-oss) to leave the token budget for the actual output instead.
+function reasoningParamsFor(model) {
+  if (/gpt-oss/i.test(model || '')) return { reasoning_effort: 'low' };
+  if (/qwen/i.test(model || '')) return { reasoning_effort: 'none' };
+  return {};
+}
+
 async function callGroqWithKey(apiKey, { prompt, systemPrompt, model, temperature, maxTokens }) {
+  const finalModel = model || DEFAULT_GROQ_MODEL;
   const res = await fetch(GROQ_URL, {
     method: 'POST',
     headers: {
@@ -162,19 +180,16 @@ async function callGroqWithKey(apiKey, { prompt, systemPrompt, model, temperatur
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: model || DEFAULT_GROQ_MODEL,
+      model: finalModel,
       temperature: temperature ?? 0.7,
       // Groq's free-tier rate limiter counts prompt_tokens + max_tokens (the
       // requested CEILING, not actual usage) against the TPM budget before
-      // the call even runs. The old hardcoded 8000 here was already at (or
-      // over, once any prompt was added) the entire 8000 TPM cap for
-      // openai/gpt-oss-120b on the free tier -- every single call was
-      // guaranteed to fail with a "Requested X > Limit 8000" error,
-      // regardless of prompt size. None of this extension's completions
-      // (the longest is the full JSON gig description, generously under
-      // 1000 tokens) need anywhere near that -- 2048 leaves comfortable
-      // headroom under 8000 for the prompt itself.
-      max_tokens: maxTokens || 2048,
+      // the call even runs. 3000 leaves comfortable headroom under the
+      // 8000 TPM cap for openai/gpt-oss-120b even with this extension's
+      // longer prompts, while still covering the largest real completion
+      // (5-question FAQ JSON) with reasoning_effort dialed down below.
+      max_tokens: maxTokens || 3000,
+      ...reasoningParamsFor(finalModel),
       messages: [
         { role: 'system', content: systemPrompt || '' },
         { role: 'user', content: prompt },
