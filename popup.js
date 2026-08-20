@@ -184,3 +184,88 @@ document.getElementById('saveTemp').addEventListener('click', () => {
   const temperature = parseFloat(document.getElementById('tempRange').value) / 10;
   chrome.storage.sync.set({ temperature }, () => toast('◆ Temperature saved'));
 });
+
+// ── CV Generator ─────────────────────────────────────────────────────────
+// Writes a full structured CV via the same AI_REQUEST pipeline everything
+// else in this extension uses, then hands the data off to cv.html (a
+// bundled extension page opened in a new tab) to render and print-to-PDF.
+// No PDF library, no new network host -- just the browser's own native
+// print dialog, which produces a real PDF identically in Chrome and Firefox.
+
+document.getElementById('generateCv').addEventListener('click', async () => {
+  const btn = document.getElementById('generateCv');
+  const statusEl = document.getElementById('cvStatus');
+
+  const name = document.getElementById('cv-name').value.trim();
+  const title = document.getElementById('cv-title').value.trim();
+  const skills = document.getElementById('cv-skills').value.trim();
+  const years = document.getElementById('cv-years').value.trim();
+  const creds = document.getElementById('cv-creds').value.trim();
+  const notes = document.getElementById('cv-notes').value.trim();
+
+  if (!name || !skills) {
+    statusEl.textContent = '⚠ Name and core skills are required.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⟳ Writing CV…';
+  statusEl.textContent = '';
+
+  try {
+    const prompt = `Write a complete, professional freelance CV for: ${name}${title ? `, working as a ${title}` : ''}.
+Core skills/services they offer: ${skills}
+${years ? `Years of experience: ${years}` : 'Years of experience: not specified — write generally without inventing a specific number.'}
+${creds ? `Real certifications/education to include, verbatim, do not embellish beyond what's given: ${creds}` : 'No certifications/education were provided — use exactly the string "Available upon request" for the education field, do not invent any credential, course, or certification.'}
+${notes ? `Additional context to weave in naturally where relevant: ${notes}` : ''}
+
+Return ONLY valid JSON with these exact keys:
+{
+  "profile": "3-4 sentence professional summary paragraph — versatile, capable, adaptable tone, written in third person, no first-person 'I'",
+  "coreServices": ["...", "...", "... 10-15 short service/skill phrases, comma-list style, matching the specific skills given"],
+  "technicalSkills": ["...", "...", "... 10-15 short specific skill/tool phrases distinct from coreServices — more granular/technical"],
+  "experienceHeading": "A short freelance role title, e.g. 'Freelance ${title || 'Specialist'}'",
+  "experienceSummary": "1 paragraph describing the general nature of their work, project types, and working style — professional, third person",
+  "serviceExpertise": [
+    { "category": "Short category name", "description": "1 sentence listing specific things covered in this category" },
+    { "category": "...", "description": "..." },
+    { "category": "...", "description": "..." }
+  ],
+  "strengths": ["...", "... 10-12 short professional strength words/phrases, e.g. Attention to Detail, Reliability, Adaptability"],
+  "toolsPlatforms": ["...", "... 10-15 real tools/platforms relevant to the skills given"],
+  "education": "${creds ? 'formatted from what was given' : 'Available upon request'}",
+  "languages": "${notes.toLowerCase().includes('language') ? 'drawn from the notes given' : 'English, Professional Working Proficiency.'}",
+  "availability": "${notes.toLowerCase().includes('availab') ? 'drawn from the notes given' : 'Available for freelance, contract, and long term remote projects worldwide.'}"
+}
+
+WRITING STYLE:
+- Confident, professional, third-person throughout — no "I" or "my."
+- Concrete and specific over vague and impressive — real skill/tool names beat generic adjectives like "professional" or "amazing."
+- serviceExpertise categories should be genuinely derived from the skills given, not generic filler categories.
+- Never fabricate a specific credential, certification, institution, or number that wasn't provided.
+- JSON only, no markdown, no commentary.`;
+
+    const res = await chrome.runtime.sendMessage({
+      type: 'AI_REQUEST',
+      payload: { prompt, systemPrompt: 'You write polished, professional freelance CVs.', temperature: 0.8 }
+    });
+    if (res.error) throw new Error(res.error);
+
+    let cv;
+    try { cv = JSON.parse(res.result.match(/\{[\s\S]*\}/)?.[0]); }
+    catch { throw new Error('Could not parse the generated CV — try again'); }
+    if (!cv?.profile || !Array.isArray(cv.coreServices)) throw new Error('Incomplete CV data — try again');
+
+    await chrome.storage.local.set({
+      faiCvData: { name, title, ...cv, generatedAt: Date.now() }
+    });
+
+    chrome.tabs.create({ url: chrome.runtime.getURL('cv.html') });
+    statusEl.textContent = '✓ CV opened in a new tab.';
+  } catch (e) {
+    statusEl.textContent = '⚠ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '◆ Generate CV';
+  }
+});

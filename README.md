@@ -63,6 +63,11 @@ As of Claude Opus 4.7+/4.8 and Claude Sonnet 5, Anthropic's Messages API hard-re
 ### Seller Profile
 - **Bio / About**, **Work Experience**, **Skills** — personalized with your name, years, and country
 
+### CV / Resume Generator (popup → CV tab)
+- Give it a name, role, core skills, years of experience, and (optionally) real certifications/education — it writes a complete, professionally structured CV: profile summary, core services, skills, experience, service-expertise breakdown, strengths, tools/platforms, education, languages, availability
+- Opens in a new tab, ready to **Save as PDF** via the browser's own native print dialog — no bundled PDF library, no new network calls, works identically in Chrome and Firefox
+- Won't invent certifications, institutions, or credentials you don't provide — leaves "Available upon request" (matching standard practice) if you leave that field blank
+
 ### General
 - **Live Market Research** — one same-origin fetch to Fiverr's own search results per niche (not a crawl — behaves like one manual search), 30-min session cache, always shown as a visible status so it never looks hung. Toggle on/off in the popup under **Extension → Live Market Research**
 - **Stop Button** — every AI button becomes a Stop button while running
@@ -138,7 +143,7 @@ If both come back empty, `researchMarket()` returns `null` and **every** calling
 - `background.js` is the **only** file that makes cross-origin network requests, and it only ever talks to `api.anthropic.com` and `api.groq.com` — exactly the two hosts declared in `manifest.json`'s `host_permissions`. There is no analytics, no telemetry, no logging server, and no request to any Brainbox-owned or third-party endpoint.
 - The one Fiverr-side request (market research) is same-origin, made from `content.js` running on `fiverr.com` itself, using your existing session — not a new external host, and not visible to any server outside Fiverr and Anthropic.
 - Keys are never printed to the console and never included in error messages surfaced to the popup.
-- The extension only requests the `storage` permission plus host access to Fiverr and the two AI providers — no `activeTab`, no broad `<all_urls>` access.
+- The extension requests `storage`, `tabs`, and host access to Fiverr and the two AI providers — no `activeTab`, no broad `<all_urls>` access. `tabs` is used for exactly one thing: opening the generated CV in a new tab (`chrome.tabs.create` with the extension's own bundled `cv.html` page) — it does not grant access to the content or URLs of other tabs.
 - If you fork this further, keep the network request logic centralized in `background.js` so this guarantee stays easy to audit.
 
 ---

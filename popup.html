@@ -244,6 +244,7 @@ code { background: var(--surface-3); padding: 1px 5px; border-radius: 5px; font-
 <div class="tabs">
   <div class="tab active" data-tab="kw">Keywords</div>
   <div class="tab" data-tab="ai">AI Provider</div>
+  <div class="tab" data-tab="cv">CV</div>
 </div>
 
 <!-- Keywords -->
@@ -381,6 +382,37 @@ code { background: var(--surface-3); padding: 1px 5px; border-radius: 5px; font-
       <span class="temp-val" id="tempVal">0.7</span>
     </div>
     <button class="btn btn-primary" style="margin-top:12px;width:100%" id="saveTemp">◆ Save</button>
+  </div>
+</div>
+
+<!-- CV -->
+<div class="panel" id="tab-cv">
+  <div class="card">
+    <div class="card-title">Generate a CV / Resume</div>
+    <p class="hint" style="margin-bottom:12px">Writes a full, professional CV from a few real details — same layout style as a polished multi-service freelancer resume — then opens it in a new tab where you can save it as a PDF. Won't invent certifications or education you don't give it.</p>
+
+    <div class="field-label"><span>Full name</span></div>
+    <input type="text" class="inp" id="cv-name" placeholder="e.g. Alex Morgan">
+
+    <div class="field-label" style="margin-top:10px"><span>Title / role</span></div>
+    <input type="text" class="inp" id="cv-title" placeholder="e.g. Shopify Store Design Expert">
+
+    <div class="field-label" style="margin-top:10px"><span>Core skills &amp; services</span></div>
+    <textarea class="inp tall" id="cv-skills" placeholder="e.g. Shopify store design, theme customization, SEO setup, page speed optimization, product listing, bug fixing"></textarea>
+
+    <div class="field-label" style="margin-top:10px"><span>Years of experience</span></div>
+    <input type="text" class="inp" id="cv-years" placeholder="e.g. 3">
+
+    <div class="field-label" style="margin-top:10px"><span>Real certifications / education (optional)</span></div>
+    <textarea class="inp" id="cv-creds" placeholder="Leave blank to show &quot;Available upon request,&quot; like the reference format — only fill this in with things you actually hold."></textarea>
+
+    <div class="field-label" style="margin-top:10px"><span>Anything else to include (optional)</span></div>
+    <textarea class="inp" id="cv-notes" placeholder="Languages, availability, standout past projects, etc."></textarea>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="generateCv" style="width:100%">◆ Generate CV</button>
+    </div>
+    <p class="hint" id="cvStatus" style="margin-top:8px"></p>
   </div>
 </div>
 
