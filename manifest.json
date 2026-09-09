@@ -3,7 +3,7 @@
   "name": "Brainbox Gig AI — Fiverr Autofill",
   "version": "3.3.0",
   "description": "AI copilot for Fiverr: autofill gigs and profiles, research markets, score opportunities, optimise copy, and recover drafts.",
-  "permissions": ["storage", "tabs", "alarms"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://www.fiverr.com/*",
     "https://api.anthropic.com/*",
