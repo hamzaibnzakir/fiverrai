@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Brainbox Gig AI — Fiverr Autofill",
+  "version": "3.3.0",
+  "description": "AI copilot for Fiverr: autofill gigs and profiles, research markets, score opportunities, optimise copy, and recover drafts.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://www.fiverr.com/*",
+    "https://api.anthropic.com/*",
+    "https://api.groq.com/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.fiverr.com/*"],
+      "js": ["content.js", "content_tools.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "tools.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "brainbox-gig-ai@brainboxecomlab.com",
+      "strict_min_version": "109.0"
+    }
+  }
+}
