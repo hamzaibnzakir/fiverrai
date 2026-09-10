@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Brainbox Gig AI — Fiverr Autofill",
-  "version": "3.2.0",
-  "description": "Brainbox Ecom Lab's AI copilot for Fiverr: autofills gig pages and seller profile with Claude (or free Groq) using human-like typing, live market research, and click-optimized thumbnail prompts.",
+  "version": "3.3.1",
+  "description": "AI copilot for Fiverr: autofill gigs and profiles, research markets, score opportunities, optimise copy, and recover drafts.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://www.fiverr.com/*",
@@ -10,13 +10,13 @@
     "https://api.groq.com/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "scripts": ["background.js"]
+    "scripts": ["background.js"],
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": ["https://www.fiverr.com/*"],
-      "js": ["content.js"],
+      "js": ["content.js", "content_tools.js", "power_tools_launcher.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }
@@ -29,6 +29,10 @@
       "128": "icons/icon128.png"
     }
   },
+  "options_ui": {
+    "page": "tools.html",
+    "open_in_tab": true
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -37,7 +41,10 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "brainbox-gig-ai@brainboxecomlab.com",
-      "strict_min_version": "109.0"
+      "strict_min_version": "121.0",
+      "data_collection_permissions": {
+        "required": ["authenticationInfo", "searchTerms", "websiteContent"]
+      }
     }
   }
 }
